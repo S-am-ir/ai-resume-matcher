@@ -1,0 +1,53 @@
+services:
+  # Backend API
+  - type: web
+    name: anti-berojgar-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    workingDirectory: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: anti-berojgar-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+    healthCheckPath: /
+
+  # Background Agent (runs hourly)
+  - type: cron
+    name: anti-berojgar-agent
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "bash render_start.sh"
+    workingDirectory: backend
+    schedule: "0 * * * *"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: anti-berojgar-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+
+databases:
+  - name: anti-berojgar-db
+    plan: free
+    region: oregon
