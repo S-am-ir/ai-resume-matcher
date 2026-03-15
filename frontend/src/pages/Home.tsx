@@ -28,15 +28,14 @@ interface Stats {
   interviews: number;
 }
 
-export default function Home({ 
-  userEmail, 
+export default function Home({
+  userEmail,
   resume,
-  onResumeUpload, 
-  onResumeRemove, 
+  onResumeUpload,
+  onResumeRemove,
   hasResume,
   onOpenPreview
 }: HomeProps) {
-  const [dragOver, setDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [jobDescription, setJobDescription] = useState('');
   const [isTailoring, setIsTailoring] = useState(false);
@@ -231,10 +230,8 @@ export default function Home({
               {!hasResume ? (
                 <div
                   className="upload-dropzone"
-                  onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileChange(e); }}
+                  onDrop={(e) => { e.preventDefault(); handleFileChange(e); }}
                 >
                   <div className="upload-icon">📁</div>
                   <h3 className="upload-title">Upload your resume</h3>
