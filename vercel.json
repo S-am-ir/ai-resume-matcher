@@ -6,8 +6,8 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://anti-berojgar-backend.onrender.com/api/:1"
+      "source": "/api/:path*",
+      "destination": "https://anti-berojgar-backend.onrender.com/api/:path*"
     }
   ],
   "env": {
