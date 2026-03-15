@@ -25,8 +25,17 @@ export interface Job {
   relevance_score?: number;
 }
 
+// Get API base URL from environment or use relative path
+const getApiUrl = (path: string) => {
+  const railwayUrl = import.meta.env.VITE_RAILWAY_URL;
+  if (railwayUrl) {
+    return `${railwayUrl}${path}`;
+  }
+  return path;
+};
+
 export const searchJobsNative = async (filters: JobSearchFilters) => {
-  const res = await fetch('/api/jobs/search', {
+  const res = await fetch(getApiUrl('/api/jobs/search'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(filters)
@@ -39,7 +48,7 @@ export const searchJobsNative = async (filters: JobSearchFilters) => {
 }
 
 export const invokeAgent = async (messages: any[], userEmail?: string, resumeData?: any, jobDescription?: string) => {
-    const res = await fetch('/api/agent/invoke', {
+    const res = await fetch(getApiUrl('/api/agent/invoke'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -56,13 +65,13 @@ export const invokeAgent = async (messages: any[], userEmail?: string, resumeDat
 }
 
 export const getApplications = async (email: string) => {
-    const res = await fetch(`/api/applications?email=${encodeURIComponent(email)}`);
+    const res = await fetch(getApiUrl(`/api/applications?email=${encodeURIComponent(email)}`));
     if (!res.ok) throw new Error("Failed to fetch applications API");
     return res.json();
 }
 
 export const syncApplications = async (email: string) => {
-    const res = await fetch(`/api/applications/sync?email=${encodeURIComponent(email)}`, {
+    const res = await fetch(getApiUrl(`/api/applications/sync?email=${encodeURIComponent(email)}`), {
         method: 'POST'
     });
     if (!res.ok) throw new Error("Failed to sync applications");
@@ -70,7 +79,7 @@ export const syncApplications = async (email: string) => {
 }
 
 export const saveJobLead = async (jobLead: any) => {
-    const res = await fetch('/api/jobs/save', {
+    const res = await fetch(getApiUrl('/api/jobs/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(jobLead)
@@ -80,12 +89,12 @@ export const saveJobLead = async (jobLead: any) => {
 }
 
 export const getJobLeads = async (email: string) => {
-    const res = await fetch(`/api/jobs/leads?email=${encodeURIComponent(email)}`);
+    const res = await fetch(getApiUrl(`/api/jobs/leads?email=${encodeURIComponent(email)}`));
     if (!res.ok) throw new Error("Failed to fetch job leads");
     return res.json();
 }
 export const saveEmailSettings = async (userEmail: string, imapPassword: string) => {
-    const res = await fetch('/api/settings/email', {
+    const res = await fetch(getApiUrl('/api/settings/email'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_email: userEmail, imap_password: imapPassword })
@@ -95,7 +104,7 @@ export const saveEmailSettings = async (userEmail: string, imapPassword: string)
 }
 
 export const getEmailSettings = async (email: string) => {
-    const res = await fetch(`/api/settings/email?email=${encodeURIComponent(email)}`);
+    const res = await fetch(getApiUrl(`/api/settings/email?email=${encodeURIComponent(email)}`));
     if (!res.ok) throw new Error("Failed to fetch email settings");
     return res.json();
 }
@@ -104,8 +113,8 @@ export const uploadResume = async (file: File, userEmail?: string) => {
     const formData = new FormData();
     formData.append('file', file);
     if (userEmail) formData.append('email', userEmail);
-    
-    const res = await fetch('/api/resume/upload', {
+
+    const res = await fetch(getApiUrl('/api/resume/upload'), {
         method: 'POST',
         body: formData
     });
@@ -125,7 +134,7 @@ export interface TailorRequest {
 }
 
 export const tailorResume = async (params: TailorRequest): Promise<TailorResult> => {
-    const res = await fetch('/api/agent/invoke', {
+    const res = await fetch(getApiUrl('/api/agent/invoke'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

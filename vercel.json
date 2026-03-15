@@ -7,27 +7,12 @@
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "backend/api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "runtime": "@vercel/python@3.11",
-        "maxDuration": 60
-      }
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "/backend/api/index.py"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/frontend/$1"
+      "src": "/(.*)",
+      "dest": "frontend/$1"
     }
-  ],
-  "env": {
-    "VITE_API_URL": "/api"
-  }
+  ]
 }
