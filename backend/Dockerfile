@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
+    bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -17,11 +18,8 @@ COPY . .
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Make start script executable
-RUN chmod +x start.sh
-
 # Expose port
 EXPOSE 8000
 
-# Run the app using start script with bash
-CMD ["bash", "start.sh"]
+# Run the app - PORT env var from Railway
+ENTRYPOINT ["bash", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
