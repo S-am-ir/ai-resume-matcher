@@ -26,7 +26,7 @@ services:
     name: anti-berojgar-agent
     runtime: python
     region: oregon
-    plan: free
+    plan: starter
     repo: https://github.com/S-am-ir/-Anti-Berojgar.git
     branch: main
     rootDir: backend
