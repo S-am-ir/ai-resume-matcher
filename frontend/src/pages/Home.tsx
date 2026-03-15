@@ -7,7 +7,6 @@ interface HomeProps {
   onResumeUpload: (file: File) => void;
   onResumeRemove: () => void;
   hasResume: boolean;
-  onOpenPreview: () => void;
 }
 
 interface ManualJob {
@@ -33,9 +32,8 @@ export default function Home({
   resume,
   onResumeUpload,
   onResumeRemove,
-  hasResume,
-  onOpenPreview
-}: HomeProps) {
+  hasResume
+}: Omit<HomeProps, 'onOpenPreview'>) {
   const [isUploading, setIsUploading] = useState(false);
   const [jobDescription, setJobDescription] = useState('');
   const [isTailoring, setIsTailoring] = useState(false);
@@ -257,9 +255,6 @@ export default function Home({
                     <span>Resume uploaded</span>
                   </div>
                   <div className="uploaded-actions">
-                    <button className="btn btn-secondary btn-sm" onClick={onOpenPreview}>
-                      👁️ Preview
-                    </button>
                     <button className="btn btn-danger btn-sm" onClick={onResumeRemove}>
                       🗑️ Remove
                     </button>

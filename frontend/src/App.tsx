@@ -29,7 +29,6 @@ function App() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [tailoredResumePath, setTailoredResumePath] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
 
   // Toast notification helper
@@ -153,7 +152,6 @@ function App() {
                 userEmail={userEmail}
                 onResumeUpload={handleResumeUpload}
                 onResumeRemove={handleRemoveResume}
-                onOpenPreview={() => setShowPreview(true)}
               />
             }
           />
@@ -204,28 +202,6 @@ function App() {
               <p className="modal-hint">
                 🔒 Your email is stored locally and only used for application tracking
               </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Resume Preview Modal */}
-      {showPreview && resume && resumePreview && (
-        <div className="modal-overlay resume-preview" onClick={() => setShowPreview(false)}>
-          <div className="modal-content resume-preview-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>📄 Resume Preview</h3>
-              <button className="modal-close" onClick={() => setShowPreview(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              {resume.type === 'application/pdf' ? (
-                <iframe src={resumePreview} title="Resume Preview" className="preview-frame" />
-              ) : (
-                <img src={resumePreview} alt="Resume Preview" className="preview-image" />
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => setShowPreview(false)}>Close</button>
             </div>
           </div>
         </div>
