@@ -211,8 +211,8 @@ function App() {
 
       {/* Resume Preview Modal */}
       {showPreview && resume && resumePreview && (
-        <div className="modal-overlay" onClick={() => setShowPreview(false)}>
-          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay resume-preview" onClick={() => setShowPreview(false)}>
+          <div className="modal-content resume-preview-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>📄 Resume Preview</h3>
               <button className="modal-close" onClick={() => setShowPreview(false)}>×</button>
