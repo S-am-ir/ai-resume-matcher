@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
@@ -24,22 +24,29 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+
     steps:
-    - uses: actions/checkout@v3
-    
+    - uses: actions/checkout@v4
+
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
-    - name: Install dependencies
-      working-directory: ./backend
+
+    - name: Show files (debug)
       run: |
+        echo "Root directory:"
+        ls -la
+        echo "Backend directory:"
+        ls -la backend/
+
+    - name: Install dependencies
+      run: |
+        cd backend
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         playwright install chromium
-    
+
     - name: Run tests
       working-directory: ./backend
       env:
@@ -48,7 +55,7 @@ jobs:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
         python -m pytest tests/test_unit.py -v --tb=short
-    
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
