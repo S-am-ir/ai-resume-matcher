@@ -1,0 +1,8 @@
+# Vercel build configuration
+[build]
+command = "cd frontend && npm install && npm run build"
+output = "frontend/dist"
+
+# Install Python dependencies
+[[build.processes]]
+command = "pip install -r backend/requirements.txt"

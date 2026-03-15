@@ -1,5 +1,5 @@
 services:
-  # Backend API
+  # Backend API (Vercel deployment)
   - type: web
     name: anti-berojgar-backend
     runtime: python
@@ -20,25 +20,3 @@ services:
       - key: GEMINI_API_KEY
         sync: false
     healthCheckPath: /
-
-  # Background Agent (runs hourly)
-  - type: cron
-    name: anti-berojgar-agent
-    runtime: python
-    region: oregon
-    plan: starter
-    repo: https://github.com/S-am-ir/-Anti-Berojgar.git
-    branch: main
-    rootDir: backend
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "bash render_start.sh"
-    schedule: "0 * * * *"
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: DATABASE_URL
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
