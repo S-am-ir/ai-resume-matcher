@@ -18,5 +18,8 @@ COPY . .
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Run the app - Railway sets PORT env var
-CMD bash -c "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"
+# Railway expects the app on port 8080
+EXPOSE 8080
+
+# Run the app
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
