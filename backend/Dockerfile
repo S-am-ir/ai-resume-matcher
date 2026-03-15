@@ -8,9 +8,9 @@ RUN apt-get update && apt-get install -y \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy pyproject.toml first for better caching
+COPY pyproject.toml .
+RUN pip install --no-cache-dir -e .
 
 # Copy all backend code
 COPY . .
