@@ -1,33 +1,20 @@
-# Vercel Serverless Entry Point
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+# Vercel Serverless Entry Point for FastAPI
 import os
-import json
-import asyncpg
-import base64
-import uuid
-import asyncio
-from typing import Optional, List, Dict, Any
 import sys
 
-# Add backend to path
+# Add backend to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import init_db
-from config import settings
-from agent.graph import build_graph
-
-# Allow HTTP traffic for local dev
+# Set environment before any imports
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-# Create temp directory for resume uploads
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+# Import the main app from main.py
+from main import app
 
+# Add CORS for Vercel
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,9 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Import routes from main.py
-from main import router
-app.include_router(router)
-
+# Vercel requires this handler for ASGI apps
 def handler(request):
     return app
