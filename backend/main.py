@@ -74,11 +74,19 @@ async def background_tracking_loop():
 
 app = FastAPI(title="Anti-Berojgar API", lifespan=lifespan)
 
+# CORS Configuration - Allow Vercel frontend and localhost for dev
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Local dev
+    "http://localhost:3000",  # Local dev alternate
+    "https://anti-berojgar.vercel.app",  # Vercel production
+    "https://anti-berojgar-backend.onrender.com",  # Render backend
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # TODO: restrict this in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
