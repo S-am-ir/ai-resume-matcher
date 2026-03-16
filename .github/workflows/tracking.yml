@@ -1,0 +1,37 @@
+name: Auto Track Job Applications
+
+on:
+  schedule:
+    # Run every hour at minute 0
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+    inputs:
+      email:
+        description: 'Email to track applications for'
+        required: true
+        default: 'xenflashss@gmail.com'
+
+jobs:
+  track-applications:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Application Tracking
+        run: |
+          echo "🔄 Starting job application tracking..."
+          
+          # Call the HF Spaces tracking endpoint
+          RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
+            "https://s-a-mir-anti-berojgar.hf.space/api/applications/sync?email=${{ github.event.inputs.email || 'xenflashss@gmail.com' }}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+          BODY=$(echo "$RESPONSE" | sed '/HTTP_CODE:/d')
+          
+          echo "Response: $BODY"
+          echo "HTTP Status: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Tracking completed successfully!"
+          else
+            echo "⚠️ Tracking returned status $HTTP_CODE"
+          fi
