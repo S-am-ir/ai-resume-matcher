@@ -27,8 +27,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Start background tracking task
-    asyncio.create_task(background_tracking_loop())
+    # Startup: no background tasks on Render
+    # Background tracking disabled for cloud deployment
     yield
     # Shutdown: cleanup if needed
 
