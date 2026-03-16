@@ -1,5 +1,5 @@
 import { useState, useEffect, DragEvent } from 'react';
-import { uploadResume } from '../api';
+import { uploadResume, invokeAgent, getApplications, saveJobLead } from '../api';
 
 interface HomeProps {
   userEmail: string | null;
@@ -49,8 +49,7 @@ export default function Home({
   // Fetch real stats when component mounts or userEmail changes
   useEffect(() => {
     if (userEmail) {
-      fetch(`/api/applications?email=${encodeURIComponent(userEmail)}`)
-        .then(res => res.json())
+      getApplications(userEmail)
         .then(apps => {
           setStats({
             applications: apps.length,
@@ -100,18 +99,12 @@ export default function Home({
     setMatchWarning(null);
 
     try {
-      const response = await fetch('/api/agent/invoke', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: 'Tailor my resume for this job' }],
-          user_email: userEmail || undefined,
-          user_resume_data: resume && 'backendPath' in resume ? { visual_path: resume.backendPath } : undefined,
-          job_description: jobDescription
-        })
-      });
-
-      const result = await response.json();
+      const result = await invokeAgent(
+        [{ role: 'user', content: 'Tailor my resume for this job' }],
+        userEmail || undefined,
+        resume && 'backendPath' in resume ? { visual_path: resume.backendPath } : undefined,
+        jobDescription
+      );
       console.log('[TAILOR] Agent response:', result);
       console.log('[TAILOR] match_analysis:', result.match_analysis);
       console.log('[TAILOR] mismatched value:', result.match_analysis?.mismatched);
@@ -157,35 +150,29 @@ export default function Home({
     setError(null);
 
     try {
-      const response = await fetch('/api/jobs/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_email: userEmail,
-          company: manualJob.company || 'Unknown',
-          job_title: manualJob.title,
-          job_url: manualJob.url || null,
-          job_description: manualJob.description || null,
-          location: null,
-          salary_info: null
-        })
+      const result = await saveJobLead({
+        user_email: userEmail,
+        company: manualJob.company || 'Unknown',
+        job_title: manualJob.title,
+        job_url: manualJob.url || null,
+        job_description: manualJob.description || null,
+        location: null,
+        salary_info: null
       });
-
-      const result = await response.json();
-      if (!response.ok) {
+      if (!result.status || result.status !== 'success') {
         throw new Error(result.detail || 'Failed to add job');
       }
 
       // Reset form
       setManualJob({ title: '', company: '', url: '', description: '' });
-      
+
       // Refresh stats immediately
       if (userEmail) {
-        const appsRes = await fetch(`/api/applications?email=${encodeURIComponent(userEmail)}`);
-        const apps = await appsRes.json();
-        setStats({
-          applications: apps.length,
-          interviews: apps.filter((a: any) => a.status?.toLowerCase() === 'interview').length
+        getApplications(userEmail).then(apps => {
+          setStats({
+            applications: apps.length,
+            interviews: apps.filter((a: any) => a.status?.toLowerCase() === 'interview').length
+          });
         });
       }
       
