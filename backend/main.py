@@ -93,6 +93,11 @@ async def root():
 async def upload_resume(file: UploadFile = File(...), email: Optional[str] = None):
     """Upload resume file and store it for later use. PDF only."""
     try:
+        print(f"\n[UPLOAD] === Resume Upload ===")
+        print(f"[UPLOAD] email: {email}")
+        print(f"[UPLOAD] filename: {file.filename}")
+        print(f"[UPLOAD] SUPABASE_DB_URL: {settings.SUPABASE_DB_URL[:50] if settings.SUPABASE_DB_URL else 'None'}...")
+        
         # Validate PDF only
         file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
         if file_ext != 'pdf' and file.content_type != 'application/pdf':
@@ -100,18 +105,21 @@ async def upload_resume(file: UploadFile = File(...), email: Optional[str] = Non
                 status_code=400,
                 detail="Only PDF files are accepted. Please upload a PDF resume."
             )
-        
+
         # Generate unique filename
         unique_filename = f"{uuid.uuid4()}.pdf"
         file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        print(f"[UPLOAD] Saving to: {file_path}")
 
         # Save file
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
+        print(f"[UPLOAD] File saved successfully")
 
         # If email provided, save to database
         if email and settings.SUPABASE_DB_URL:
+            print(f"[UPLOAD] Attempting to save to DB for email: {email}")
             try:
                 conn = await asyncpg.connect(settings.SUPABASE_DB_URL)
                 await conn.execute('''
@@ -120,8 +128,9 @@ async def upload_resume(file: UploadFile = File(...), email: Optional[str] = Non
                     ON CONFLICT (email) DO UPDATE SET resume_data = $2
                 ''', email, json.dumps({"visual_path": file_path, "original_name": file.filename}))
                 await conn.close()
+                print(f"[UPLOAD] DB save successful")
             except Exception as db_err:
-                print(f"Warning: Could not save to DB: {db_err}")
+                print(f"[UPLOAD] DB save failed: {db_err}")
         elif settings.SUPABASE_DB_URL:
             # Save to DB with anonymous email if no email provided
             try:
@@ -168,35 +177,45 @@ class AgentRequest(BaseModel):
 async def invoke_agent(req: AgentRequest):
     """Invokes the LangGraph agent workflow."""
     try:
+        print(f"\n[API] === Agent Invoke Request ===")
+        print(f"[API] user_email: {req.user_email}")
+        print(f"[API] user_resume_data: {req.user_resume_data}")
+        print(f"[API] job_description length: {len(req.job_description) if req.job_description else 0}")
+        
         # Load user context (resume + tokens) from database if email is provided
         user_context = req.user_resume_data or {}
-        
+
         if req.user_email and settings.SUPABASE_DB_URL:
             try:
                 conn = await asyncpg.connect(settings.SUPABASE_DB_URL)
                 user_record = await conn.fetchrow(
-                    "SELECT id, resume_data FROM users WHERE email = $1", 
+                    "SELECT id, resume_data FROM users WHERE email = $1",
                     req.user_email
                 )
+                print(f"[API] DB user_record: {user_record}")
                 if not user_record:
                     # Auto-create user if they don't exist (since we skipped OAuth)
                     await conn.execute("INSERT INTO users (email) VALUES ($1)", req.user_email)
                     user_record = await conn.fetchrow("SELECT id, resume_data FROM users WHERE email = $1", req.user_email)
-                
+                    print(f"[API] Created new user: {user_record}")
+
                 if user_record:
                     db_resume = user_record.get('resume_data') or {}
                     db_imap = user_record.get('imap_password')
-                    
+
                     resume_dict = db_resume if isinstance(db_resume, dict) else json.loads(db_resume) if db_resume else {}
-                    
+                    print(f"[API] resume_dict from DB: {resume_dict}")
+
                     user_context = {
-                        **user_context, 
+                        **user_context,
                         **resume_dict,
                         "imap_password": db_imap
                     }
                 await conn.close()
             except Exception as db_err:
                 print(f"Warning: Could not load user context from DB: {db_err}")
+
+        print(f"[API] Final user_context: {user_context}")
 
         graph = build_graph()
 
