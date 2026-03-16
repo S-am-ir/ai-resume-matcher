@@ -25,13 +25,10 @@ export interface Job {
   relevance_score?: number;
 }
 
-// Get API base URL from environment or use relative path
+// Get API base URL from environment or use Railway production URL
 const getApiUrl = (path: string) => {
-  const railwayUrl = import.meta.env.VITE_RAILWAY_URL;
-  if (railwayUrl) {
-    return `${railwayUrl}${path}`;
-  }
-  return path;
+  const railwayUrl = import.meta.env.VITE_RAILWAY_URL || 'https://anti-berojgar-production.up.railway.app';
+  return `${railwayUrl}${path}`;
 };
 
 export const searchJobsNative = async (filters: JobSearchFilters) => {
