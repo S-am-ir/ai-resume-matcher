@@ -182,10 +182,13 @@ async def invoke_agent(req: AgentRequest):
         print(f"[API] user_resume_data: {req.user_resume_data}")
         print(f"[API] job_description length: {len(req.job_description) if req.job_description else 0}")
         
-        # Load user context (resume + tokens) from database if email is provided
+        # Start with resume data from request (frontend sends backendPath)
         user_context = req.user_resume_data or {}
+        print(f"[API] Initial user_context from request: {user_context}")
 
+        # Try to load additional data from database if email is provided
         if req.user_email and settings.SUPABASE_DB_URL:
+            print(f"[API] Attempting DB lookup...")
             try:
                 conn = await asyncpg.connect(settings.SUPABASE_DB_URL)
                 user_record = await conn.fetchrow(
@@ -206,14 +209,23 @@ async def invoke_agent(req: AgentRequest):
                     resume_dict = db_resume if isinstance(db_resume, dict) else json.loads(db_resume) if db_resume else {}
                     print(f"[API] resume_dict from DB: {resume_dict}")
 
+                    # Merge: request data takes priority, DB data as fallback
                     user_context = {
-                        **user_context,
-                        **resume_dict,
+                        **resume_dict,  # DB data (has visual_path if saved)
+                        **user_context,  # Request data (has backendPath from frontend)
                         "imap_password": db_imap
                     }
                 await conn.close()
+                print(f"[API] DB lookup successful")
             except Exception as db_err:
-                print(f"Warning: Could not load user context from DB: {db_err}")
+                print(f"[API] DB lookup failed (continuing with request data): {db_err}")
+        else:
+            print(f"[API] No DB URL or email, using request data only")
+
+        # Convert backendPath to visual_path if needed
+        if user_context and 'backendPath' in user_context and 'visual_path' not in user_context:
+            user_context['visual_path'] = user_context['backendPath']
+            print(f"[API] Converted backendPath to visual_path: {user_context['visual_path']}")
 
         print(f"[API] Final user_context: {user_context}")
 
