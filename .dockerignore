@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Platform specific
+Procfile
+railway.toml
+render_start.sh
+start.sh
+
+# Backend specific
+backend/__pycache__/
+backend/*.pyc
+backend/uploads/*
+backend/output/*
+backend/.env
+backend/api/
+backend/fastmcp_server.py
+backend/Dockerfile.mcp
+backend/render_start.sh
+backend/start.sh
+backend/__main__.py
+backend/run.py
+
+# Frontend specific
+frontend/dist/*
+frontend/.env
+frontend/node_modules/
+
+# Root level
+docker-compose.yml
+Dockerfile.mcp

@@ -1,257 +1,222 @@
-# Anti-Berojgar
+# Anti-Berojgar 🎯
 
-> **Job Application Tracker with AI Resume Tailoring & Automatic Email Monitoring**
+AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.
 
-Tired of applying to jobs and hearing nothing back? This system tracks your applications, auto-tailors your resume for each job, and monitors your Gmail for responses (interviews, offers, rejections) - so you always know where you stand.
+## Features
 
-Built because I was sick of refreshing my inbox and wondering if companies ghosted me or not.
+- 📄 **Resume Tailoring** - AI customizes your resume for each job description
+- 🎯 **Job Matching** - Evaluates if you're a good fit before tailoring
+- 📧 **Gmail Auto-Tracking** - Monitors your inbox for interview invites, offers, rejections
+- ⏰ **Smart Status Updates** - Auto-marks as "Follow Up" (5 days) or "Ghosted" (7 days)
+- 📊 **Application Dashboard** - Track all your applications in one place
 
----
+## Quick Start
 
-## 🎯 What It Does
+### 1. Deploy on Hugging Face Spaces (Recommended)
 
-### 1. **Resume Tailoring with Job Matching**
-Upload your resume + paste a job description. The AI first checks if you're actually a good fit (doesn't waste your time on mismatched roles), then generates a tailored, ATS-optimized resume that highlights your relevant skills.
+1. **Create Supabase Database** (free):
+   - Go to https://supabase.com
+   - Create new project
+   - Copy the **Connection String** (Pooler mode)
 
-**Why this matters:** Most resume tailoring tools just rewrite whatever you give them. This one tells you "nah, this job wants 5 years and you got 0 - don't waste your time" OR "you got this, here's a resume that matches what they want."
+2. **Create HF Space**:
+   - Go to https://huggingface.co/spaces
+   - Click "Create new Space"
+   - Name: `anti-berojgar`
+   - License: MIT
+   - **Select "Docker" as SDK**
+   - Click "Create Space"
 
-### 2. **Automatic Application Tracking via Gmail**
-Connect your Gmail once. The system checks your inbox every hour for responses from companies. When it finds an interview invite, offer, or rejection - it updates your application status automatically and gives you a direct link to that email.
+3. **Connect GitHub**:
+   - In your HF Space, go to **Settings**
+   - Scroll to "Repository details"
+   - Click "Connect GitHub Repo"
+   - Select your `Anti-Berojgar` repository
 
-**Why this matters:** No more manually checking 50 different company portals or refreshing Gmail. You get one dashboard showing exactly where every application stands.
+4. **Add Environment Variables** (in HF Space Settings → Variables):
+   ```
+   SUPABASE_DB_URL=postgresql://...
+   GEMINI_API_KEY=AIzaSy...
+   GROQ_API_KEY=gsk_...
+   DEEPSEEK_API_KEY=sk-...
+   ```
 
-### 3. **Time-Based Status Updates**
-No response after 5 days? Marks as "Follow Up". Still nothing after 7 days? Marks as "Ghosted". Knows when to move on.
+5. **Wait for deployment** (~5 minutes)
 
----
+### 2. Set Up Database
 
-## 🏗️ Architecture
+Run this SQL in your Supabase SQL Editor:
 
+```sql
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    oauth_token JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    resume_data JSONB,
+    imap_password TEXT
+);
+
+-- Job Applications table
+CREATE TABLE IF NOT EXISTS job_applications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company TEXT NOT NULL,
+    job_title TEXT NOT NULL,
+    job_description TEXT,
+    status TEXT DEFAULT 'Pending',
+    applied_at TIMESTAMPTZ DEFAULT NOW(),
+    last_checked_at TIMESTAMPTZ,
+    tailored_resume_path TEXT,
+    agent_notes TEXT,
+    gmail_message_id TEXT,
+    gmail_thread_id TEXT,
+    job_url TEXT,
+    location TEXT,
+    salary_info TEXT
+);
+
+-- Create index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_applications_user_id ON job_applications(user_id);
+CREATE INDEX IF NOT EXISTS idx_applications_status ON job_applications(status);
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         ANTI-BEROJGAR SYSTEM                             │
-│              AI-Powered Job Application Tracker                          │
-└─────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────┐         ┌──────────────┐         ┌──────────────┐
-│   Frontend   │◄───────►│   Backend    │◄───────►│   Database   │
-│   React      │   REST  │   FastAPI    │  PostgreSQL         │
-│   Vite       │   API   │  LangGraph   │  Supabase           │
-│  (Port 5173) │         │  (Port 8000) │                     │
-└──────────────┘         └──────────────┘         └──────────────┘
-                                │
-                                │
-                ┌───────────────┴───────────────┐
-                │                               │
-                ▼                               ▼
-        ┌──────────────┐               ┌──────────────┐
-        │  Agent Graph │               │  JobSpy MCP  │
-        │  (LangGraph) │               │  (Job Scraper│
-        └──────────────┘               └──────────────┘
-                │
-                ▼
-        ┌──────────────┐
-        │  Gmail IMAP  │
-        │  (Hourly     │
-        │   Auto-Check)│
-        └──────────────┘
+### 3. Get API Keys
 
+| Service | Purpose | Get From |
+|---------|---------|----------|
+| **Gemini** | Resume tailoring (free, 1500 req/day) | https://aistudio.google.com/apikey |
+| **Groq** | Fast LLM inference (free tier) | https://console.groq.com/keys |
+| **DeepSeek** | Backup LLM (free, 5M tokens/mo) | https://platform.deepseek.com/ |
 
-KEY COMPONENTS:
+### 4. Configure Gmail (Optional but Recommended)
 
-1. Frontend (React + Vite)
-   └─ Resume upload & preview
-   └─ Job application dashboard
-   └─ Settings (Gmail configuration)
-   └─ Tailored resume download
-
-2. Backend (FastAPI + LangGraph)
-   └─ Resume parsing (PDF extraction)
-   └─ Job matching logic (experience, skills)
-   └─ AI resume tailoring (Qwen3-32B, Gemini 2.5)
-   └─ Background tracking agent (hourly Gmail checks)
-
-3. Database (PostgreSQL via Supabase)
-   └─ Users table (email, resume data, Gmail creds)
-   └─ Job applications table (status, tracking info)
-   └─ Job leads table (scraped positions)
-
-4. External Services
-   └─ Groq API (Qwen3-32B for job matching)
-   └─ Gemini 2.5 Flash (resume tailoring)
-   └─ Gmail IMAP (email monitoring)
-   └─ JobSpy MCP (job scraping from LinkedIn/Indeed)
-```
+1. Enable 2FA on your Google Account
+2. Go to https://myaccount.google.com/apppasswords
+3. Create app password:
+   - App: **Mail**
+   - Device: **Other** → Name: `Anti-Berojgar`
+4. Copy the 16-character password
+5. Add to HF Space variables as `GMAIL_APP_PASSWORD`
 
 ---
 
-## 🚀 Quick Start
+## Local Development
 
 ### Prerequisites
-- Docker + Docker Compose
-- Python 3.10+ (for local dev)
-- Groq API key (free): https://console.groq.com/keys
-- Gemini API key (free): https://makersuite.google.com/app/apikey
 
-### 1. Clone & Setup
-```bash
-git clone https://github.com/S-am-ir/Anti-Berojgar.git
-cd Anti-Berojgar
+- Python 3.11+
+- Node.js 20+
+- PostgreSQL (or use Supabase free tier)
 
-# Copy environment template
-cp .env.docker.sample .env.docker
-# Edit .env.docker with your API keys
-```
-
-### 2. Run with Docker
-```bash
-docker-compose up -d
-```
-
-That's it. Open http://localhost:5173 and start tracking.
-
-### 3. First-Time Setup
-1. **Upload your resume** (PDF only - ATS friendly)
-2. **Connect your Gmail** (Settings → Gmail App Password)
-3. **Add jobs** you've applied to
-4. **Wait** - the system checks your Gmail every hour
-
----
-
-## 📋 Features
-
-### Resume Tailoring
-- ✅ PDF-only upload (no images - ATS compatibility)
-- ✅ Job matching before tailoring (saves time on bad fits)
-- ✅ ATS-optimized output (single column, standard fonts)
-- ✅ One-page format for entry-level (no fake experience added)
-- ✅ Highlights relevant skills from job description
-
-### Application Tracking
-- ✅ Manual job addition (title, company, URL, description)
-- ✅ Automatic Gmail monitoring (hourly)
-- ✅ Status auto-updates: Interview / Offered / Rejected
-- ✅ Time-based updates: Follow Up (5d) / Ghosted (7d)
-- ✅ Direct email links (click to open Gmail response)
-- ✅ Delete applications
-
-### Tech Stack
-| Layer | Technology |
-|-------|------------|
-| Frontend | React, TypeScript, Vite |
-| Backend | FastAPI, Python, LangGraph |
-| Database | PostgreSQL (Supabase) |
-| AI/LLM | Qwen3-32B (Groq), Gemini 2.5 Flash |
-| Email | Gmail IMAP |
-| Deployment | Docker Compose |
-
----
-
-## 🧪 Testing
+### Backend Setup
 
 ```bash
-# Run unit tests
 cd backend
-python tests/run_tests.py
-
-# Or directly
-pytest tests/test_unit.py -v
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env  # Edit with your keys
+uvicorn main:app --reload --port 8000
 ```
 
-**12 tests covering:**
-- Resume PDF validation
-- Job matching logic (experience gaps, skills)
-- Email subject parsing (interview/offer/rejection detection)
-- Gmail link generation
-- Time-based status transitions
-- API endpoint validation
+### Frontend Setup
 
-Tests run automatically on push/PR via GitHub Actions.
+```bash
+cd frontend
+npm install
+cp .env.example .env  # Edit if needed
+npm run dev
+```
 
----
+### Run Tests
 
-## 💰 Cost Breakdown
-
-This thing runs on free tiers. Seriously.
-
-| Service | Free Tier | What It Covers |
-|---------|-----------|----------------|
-| Groq API | ~30 requests/min | Job matching, routing |
-| Gemini API | 15 requests/min | Resume tailoring |
-| Supabase | 500MB database | ~10,000 applications |
-| Gmail IMAP | Free | Unlimited email tracking |
-
-**Real-world usage:** I tracked 50+ applications for 2 months. Total API cost: $0.
-
-If you go heavy (500+ applications, constant tailoring), you might hit rate limits. At that point you're probably employed anyway.
+```bash
+cd backend
+pytest tests/ -v
+```
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Anti-Berojgar/
 ├── backend/
-│   ├── agent/              # LangGraph agent (tailoring, tracking)
-│   ├── main.py             # FastAPI server
-│   ├── tests/              # Unit tests
-│   └── requirements.txt
+│   ├── main.py              # FastAPI app
+│   ├── agent/
+│   │   ├── graph.py         # LangGraph workflow
+│   │   ├── nodes.py         # Agent nodes (tailor, track)
+│   │   ├── tailor.py        # Resume tailoring logic
+│   │   ├── email_tracker.py # Gmail IMAP tracking
+│   │   └── llm.py          # LLM configuration
+│   ├── config.py            # Environment config
+│   └── database.py          # DB initialization
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # Dashboard, Applications, Settings
-│   │   └── pages/          # Home page
+│   │   ├── App.tsx          # Main app component
+│   │   ├── pages/
+│   │   │   ├── Home.tsx     # Resume upload & tailoring
+│   │   │   └── ...
+│   │   └── api.ts           # API client
 │   └── package.json
-├── .github/workflows/      # CI/CD (auto-run tests)
-├── docker-compose.yml      # Docker setup
+├── Dockerfile               # HF Spaces deployment
+├── requirements.txt         # Python dependencies
 └── README.md
 ```
 
 ---
 
-## 🤔 Why I Built This
+## Tech Stack
 
-Job hunting sucks. You apply to 100 jobs, hear back from 5, and have no idea what happened to the other 95. Companies ghost you, application portals are garbage, and you're left refreshing Gmail like it's a slot machine.
-
-This system automates the tracking part so you can focus on actually preparing for interviews (or applying to more jobs, whichever).
-
-The resume tailoring came later - realized I was sending the same generic resume everywhere and getting nowhere. Tailoring for each job helped, but doing it manually was exhausting. AI handles it now.
-
----
-
-## 📝 Demo
-
-See it in action: [demo.md](./demo.md)
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18, TypeScript, Vite |
+| **Backend** | FastAPI, Python 3.11 |
+| **AI/LLM** | LangChain, LangGraph, Gemini 2.0 Flash, Groq |
+| **Database** | PostgreSQL (Supabase) |
+| **Email** | Gmail IMAP |
+| **Deployment** | Hugging Face Spaces Docker |
 
 ---
 
-## 🛠️ Troubleshooting
+## Cost
 
-### Resume tailoring fails
-- Check Groq/Gemini API keys in `.env.docker`
-- Make sure resume is PDF (not image)
-- Job description too short? Paste the full thing
+**100% Free** when using:
+- Hugging Face Spaces (free Docker hosting)
+- Supabase (free tier: 500MB DB, enough for 10k+ applications)
+- Gemini API (free: 1500 requests/day)
+- Groq (free tier available)
+- Gmail IMAP (free)
+
+---
+
+## Troubleshooting
+
+### "No resume uploaded" error
+- Make sure you uploaded a PDF before clicking "Check & Tailor"
+- Check HF Space logs for upload errors
+
+### Database connection errors
+- Verify `SUPABASE_DB_URL` is correct (use Pooler URL)
+- Make sure you ran the SQL migration
 
 ### Gmail tracking not working
-- Use **App Password**, not your regular Gmail password
-- Enable IMAP in Gmail settings first
-- Wait up to 60 minutes for first check (runs hourly)
-
-### Database errors
-- Run `docker-compose down -v` to reset (warning: deletes data)
-- Check if port 5432 is available
+- Ensure 2FA is enabled on Google Account
+- Use App Password, not regular password
+- Check `GMAIL_USER` matches the email
 
 ---
 
-## 📄 License
+## License
 
-MIT. Use it, break it, fix it, whatever. Just don't blame me if it gets you rejected from Google.
+MIT License - feel free to use for personal or commercial projects.
 
 ---
 
-## 🙏 Shoutouts
-
-- **Groq** - Free, fast LLM inference (Qwen3-32B is underrated)
-- **LangGraph** - Makes agent workflows actually manageable
-- **Supabase** - PostgreSQL without the headache
-
-Built with ☕ and frustration during a job search.
+**Built with ❤️ for job seekers everywhere**

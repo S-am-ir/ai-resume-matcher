@@ -25,10 +25,16 @@ export interface Job {
   relevance_score?: number;
 }
 
-// Get API base URL from environment or use Railway production URL
+// Get API base URL - for Hugging Face Spaces, everything runs on same origin
 const getApiUrl = (path: string) => {
+  // In production (HF Spaces), API is on same origin
+  // In development, use Railway URL or localhost
   const railwayUrl = import.meta.env.VITE_RAILWAY_URL || 'https://anti-berojgar-production.up.railway.app';
-  return `${railwayUrl}${path}`;
+  
+  // Check if we're on HF Spaces (window.location.host contains 'hf.space')
+  const isProduction = typeof window !== 'undefined' && window.location.host.includes('hf.space');
+  
+  return isProduction ? path : `${railwayUrl}${path}`;
 };
 
 export const searchJobsNative = async (filters: JobSearchFilters) => {
