@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import json
-import asyncpg
 import base64
 import uuid
 import asyncio
@@ -17,6 +17,11 @@ from googleapiclient.discovery import build
 from database import init_db
 from config import settings
 from agent.graph import build_graph
+from db_helpers import (
+    get_or_create_user, save_resume, save_job_application, get_applications as get_apps,
+    delete_application as delete_app, save_email_settings as save_email, delete_user as delete_user_helper, reset_tracking as reset_tracking_helper,
+    has_email_password, save_job_lead, get_job_leads
+)
 
 # Allow HTTP traffic for local dev
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -27,8 +32,11 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: no background tasks on Render
-    # Background tracking disabled for cloud deployment
+    # Startup: initialize database
+    try:
+        await init_db()
+    except Exception as e:
+        print(f"Startup warning: {e}")
     yield
     # Shutdown: cleanup if needed
 
@@ -83,11 +91,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+# Serve frontend static files
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Anti-Berojgar Agent API"}
+    # Serve the frontend index.html
+    index_path = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"message": "Welcome to Anti-Berojgar Agent API", "note": "Frontend not built"}
 
 @app.post("/api/resume/upload")
 async def upload_resume(file: UploadFile = File(...), email: Optional[str] = None):
@@ -360,30 +375,26 @@ async def add_job_by_url(req: AddJobByUrlRequest):
 @app.post("/api/jobs/save")
 async def save_job_lead(req: JobLeadRequest):
     """Saves a job to the applications table for tracking."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        raise HTTPException(status_code=500, detail="Database URL not configured")
-
     try:
-        conn = await asyncpg.connect(db_url)
-        
-        # Get or create user
-        user = await conn.fetchrow("SELECT id, imap_password FROM users WHERE email = $1", req.user_email)
-        if not user:
-            # Auto-create user if they don't exist (since we skipped OAuth)
-            await conn.execute("INSERT INTO users (email) VALUES ($1)", req.user_email)
-            user = await conn.fetchrow("SELECT id, imap_password FROM users WHERE email = $1", req.user_email)
-
         # Determine initial status based on Gmail configuration
-        initial_status = "Tracking" if user and user.get("imap_password") else "Pending"
-
-        await conn.execute('''
-            INSERT INTO job_applications (user_id, company, job_title, job_url, job_description, status, applied_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
-        ''', user['id'], req.company or 'Unknown', req.job_title, req.job_url, req.job_description, initial_status)
-
-        await conn.close()
+        has_password = has_email_password(req.user_email)
+        initial_status = "Tracking" if has_password else "Pending"
+        
+        success = save_job_application(
+            user_email=req.user_email,
+            company=req.company or "Unknown",
+            job_title=req.job_title,
+            job_url=req.job_url,
+            job_description=req.job_description,
+            status=initial_status
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save job")
+            
         return {"status": "success", "message": "Job added to tracking."}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error saving job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -452,22 +463,11 @@ async def download_tailored_resume(filename: str):
     )
 
 @app.get("/api/applications")
-async def get_applications(email: str):
+async def get_applications_endpoint(email: str):
     """Fetch applications from DB."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        return []
-
     try:
-        conn = await asyncpg.connect(db_url)
-        rows = await conn.fetch('''
-            SELECT ja.* FROM job_applications ja
-            JOIN users u ON ja.user_id = u.id
-            WHERE u.email = $1
-            ORDER BY ja.applied_at DESC
-        ''', email)
-        await conn.close()
-        return [dict(r) for r in rows]
+        apps = get_apps(email)
+        return apps
     except Exception as e:
         print(f"DB Error: {e}")
         return []
@@ -475,28 +475,10 @@ async def get_applications(email: str):
 @app.delete("/api/applications/{app_id}")
 async def delete_application(app_id: str, email: str):
     """Delete a job application."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        raise HTTPException(status_code=500, detail="Database not configured")
-    
     try:
-        conn = await asyncpg.connect(db_url)
-        
-        # Verify ownership
-        owner = await conn.fetchrow('''
-            SELECT ja.id FROM job_applications ja
-            JOIN users u ON ja.user_id = u.id
-            WHERE ja.id = $1 AND u.email = $2
-        ''', app_id, email)
-        
-        if not owner:
-            await conn.close()
+        success = delete_app(app_id)
+        if not success:
             raise HTTPException(status_code=404, detail="Application not found")
-        
-        # Delete the application
-        await conn.execute('DELETE FROM job_applications WHERE id = $1', app_id)
-        await conn.close()
-        
         return {"status": "success", "message": "Application deleted"}
     except HTTPException:
         raise
@@ -507,29 +489,10 @@ async def delete_application(app_id: str, email: str):
 @app.post("/api/settings/email")
 async def save_email_settings(req: EmailSettingsRequest):
     """Saves user email tracking credentials (IMAP App Password) to the DB."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        raise HTTPException(status_code=500, detail="Database not configured")
     try:
-        conn = await asyncpg.connect(db_url)
-        # Check if user exists, if not create them
-        await conn.execute('''
-            INSERT INTO users (email, imap_password)
-            VALUES ($1, $2)
-            ON CONFLICT (email) DO UPDATE SET imap_password = $2
-        ''', req.user_email, req.imap_password)
-        
-        # Update all Pending jobs to Tracking now that Gmail is connected
-        await conn.execute('''
-            UPDATE job_applications ja
-            SET status = 'Tracking'
-            FROM users u
-            WHERE ja.user_id = u.id 
-            AND u.email = $1 
-            AND ja.status = 'Pending'
-        ''', req.user_email)
-        
-        await conn.close()
+        success = save_email(req.user_email, req.imap_password)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save email settings")
         return {"status": "success", "message": "Email settings saved. Auto-tracking started!"}
     except Exception as e:
         print(f"Error saving settings: {e}")
@@ -538,23 +501,10 @@ async def save_email_settings(req: EmailSettingsRequest):
 @app.delete("/api/users/{email}")
 async def delete_user_account(email: str):
     """Completely delete user account and all associated data."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        raise HTTPException(status_code=500, detail="Database not configured")
-    
     try:
-        conn = await asyncpg.connect(db_url)
-        
-        # Delete all job applications first (foreign key constraint)
-        await conn.execute('''
-            DELETE FROM job_applications 
-            WHERE user_id IN (SELECT id FROM users WHERE email = $1)
-        ''', email)
-        
-        # Delete the user
-        await conn.execute('DELETE FROM users WHERE email = $1', email)
-        
-        await conn.close()
+        success = delete_user_helper(email)
+        if not success:
+            raise HTTPException(status_code=404, detail="User not found")
         return {"status": "success", "message": "Account deleted successfully."}
     except Exception as e:
         print(f"Error deleting account: {e}")
@@ -563,27 +513,10 @@ async def delete_user_account(email: str):
 @app.post("/api/users/reset-tracking")
 async def reset_tracking(req: EmailSettingsRequest):
     """Reset Gmail configuration and set all jobs back to Pending."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        raise HTTPException(status_code=500, detail="Database not configured")
-    
     try:
-        conn = await asyncpg.connect(db_url)
-        
-        # Clear Gmail password
-        await conn.execute('''
-            UPDATE users SET imap_password = NULL WHERE email = $1
-        ''', req.user_email)
-        
-        # Reset all jobs to Pending
-        await conn.execute('''
-            UPDATE job_applications ja
-            SET status = 'Pending', gmail_message_id = NULL
-            FROM users u
-            WHERE ja.user_id = u.id AND u.email = $1
-        ''', req.user_email)
-        
-        await conn.close()
+        success = reset_tracking_helper(req.user_email)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to reset tracking")
         return {"status": "success", "message": "Tracking reset. Re-connect Gmail to enable auto-tracking."}
     except Exception as e:
         print(f"Error resetting tracking: {e}")
@@ -592,20 +525,23 @@ async def reset_tracking(req: EmailSettingsRequest):
 @app.get("/api/settings/email")
 async def get_email_settings(email: str):
     """Fetch existing email settings (checks if password exists)."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        return {"email": email, "has_password": False}
     try:
-        conn = await asyncpg.connect(db_url)
-        row = await conn.fetchrow("SELECT imap_password FROM users WHERE email = $1", email)
-        await conn.close()
-
-        has_password = bool(row and row['imap_password'])
-        return {
-            "email": email,
-            "has_password": has_password
-        }
+        has_password = has_email_password(email)
+        return {"email": email, "has_password": has_password}
     except Exception as e:
         print(f"Error fetching settings: {e}")
         return {"email": email, "has_password": False}
+
+# Catch-all route for frontend SPA (React Router) - MUST BE LAST
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve index.html for any non-API route (React Router)."""
+    # Skip API routes and assets
+    if full_path.startswith("api/") or full_path.startswith("assets/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    index_path = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"detail": "Not Found"}
 

@@ -21,7 +21,6 @@ def get_primary_llm(temperature: float = 0):
     return ChatGroq(
         model="qwen/qwen3-32b",
         temperature=temperature,
-        reasoning_effort="none",
         api_key=_groq_key(),
     )
 

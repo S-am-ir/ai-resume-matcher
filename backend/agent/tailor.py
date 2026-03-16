@@ -245,7 +245,11 @@ If match: Complete HTML document only (no markdown, no explanations)"""
 
     response = llm.invoke([{"role": "user", "content": prompt}])
     content = response.content.strip()
-    
+
+    # Strip <think>...</think> tags (chain-of-thought leakage)
+    import re
+    content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL | re.IGNORECASE).strip()
+
     # Clean markdown
     if content.startswith("```json"):
         content = content[7:]
@@ -262,7 +266,7 @@ If match: Complete HTML document only (no markdown, no explanations)"""
                 }
         except:
             pass
-    
+
     if content.startswith("```html"):
         content = content[7:]
     if content.endswith("```"):
