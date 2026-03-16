@@ -1,5 +1,5 @@
 import { useState, useEffect, DragEvent } from 'react';
-import { uploadResume, invokeAgent, getApplications, saveJobLead } from '../api';
+import { invokeAgent, getApplications, saveJobLead } from '../api';
 
 interface HomeProps {
   userEmail: string | null;
@@ -74,7 +74,7 @@ export default function Home({
     setIsUploading(true);
     setError(null);
     try {
-      await uploadResume(file, userEmail || undefined);
+      // Just pass the file to parent - App.tsx handles upload
       onResumeUpload(file);
     } catch (err) {
       setError('Failed to upload resume');

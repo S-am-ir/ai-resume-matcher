@@ -75,12 +75,11 @@ function App() {
       const uploadRes = await fetch('/api/resume/upload', { method: 'POST', body: formData });
       if (uploadRes.ok) {
         const result = await uploadRes.json();
-        setResume((prev) => {
-          if (prev) {
-            return Object.assign(prev, { backendPath: result.file_path });
-          }
-          return prev;
-        });
+        // Store file with backendPath properly
+        setResume({
+          ...file,
+          backendPath: result.file_path
+        } as any);
         showToast('Resume uploaded successfully', 'success');
       }
     } catch (err) {
