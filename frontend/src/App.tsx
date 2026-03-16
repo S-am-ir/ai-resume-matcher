@@ -4,6 +4,7 @@ import './App.css';
 import Applications from './components/Applications';
 import Settings from './components/Settings';
 import Home from './pages/Home';
+import { uploadResume as apiUploadResume, getApplications } from './api';
 
 interface Application {
   id: number;
@@ -54,8 +55,7 @@ function App() {
   const loadApplications = async () => {
     if (!userEmail) return;
     try {
-      const res = await fetch(`/api/applications?email=${encodeURIComponent(userEmail)}`);
-      const data = await res.json();
+      const data = await getApplications(userEmail);
       setApplications(data);
     } catch (err) {
       console.error('Failed to load applications', err);
@@ -68,20 +68,13 @@ function App() {
     setResumePreview(previewUrl);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (userEmail) formData.append('email', userEmail);
-
-      const uploadRes = await fetch('/api/resume/upload', { method: 'POST', body: formData });
-      if (uploadRes.ok) {
-        const result = await uploadRes.json();
-        // Store file with backendPath properly
-        setResume({
-          ...file,
-          backendPath: result.file_path
-        } as any);
-        showToast('Resume uploaded successfully', 'success');
-      }
+      const result = await apiUploadResume(file, userEmail || undefined);
+      // Store file with backendPath properly
+      setResume({
+        ...file,
+        backendPath: result.file_path
+      } as any);
+      showToast('Resume uploaded successfully', 'success');
     } catch (err) {
       console.error('[DEBUG] Upload error:', err);
       showToast('Failed to upload resume', 'error');
