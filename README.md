@@ -1,16 +1,280 @@
 # Anti-Berojgar 🎯
 
-AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.
+**AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.**
 
-## Features
+Anti-Berojgar (Hindi for "Unemployed") is an intelligent job search assistant that:
+- ✨ Tailors your resume to each job description using AI
+- 🎯 Evaluates job-resume matching before you apply
+- 📧 Automatically tracks application responses from Gmail
+- ⏰ Updates statuses based on email responses AND time elapsed
+- 🔄 Runs hourly automated tracking via GitHub Actions
 
-- 📄 **Resume Tailoring** - AI customizes your resume for each job description
-- 🎯 **Job Matching** - Evaluates if you're a good fit before tailoring
-- 📧 **Gmail Auto-Tracking** - Monitors your inbox for interview invites, offers, rejections
-- ⏰ **Smart Status Updates** - Auto-marks as "Follow Up" (5 days) or "Ghosted" (7 days)
-- 📊 **Application Dashboard** - Track all your applications in one place
+---
 
-## Architecture
+## 🚀 Quick Start
+
+### Option 1: Deploy on Hugging Face Spaces (Recommended - 100% Free)
+
+#### Step 1: Create Supabase Database (5 minutes)
+
+1. Go to https://supabase.com and sign up
+2. Click **"New Project"**
+3. Fill in:
+   - **Project name**: `anti-berojgar-db`
+   - **Database password**: Save this securely!
+   - **Region**: Choose closest to you
+4. Wait 2-3 minutes for provisioning
+5. Go to **SQL Editor** and run:
+
+```sql
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    oauth_token JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    resume_data JSONB,
+    imap_password TEXT
+);
+
+-- Job Applications table
+CREATE TABLE IF NOT EXISTS job_applications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company TEXT NOT NULL,
+    job_title TEXT NOT NULL,
+    job_description TEXT,
+    status TEXT DEFAULT 'Pending',
+    applied_at TIMESTAMPTZ DEFAULT NOW(),
+    last_checked_at TIMESTAMPTZ,
+    tailored_resume_path TEXT,
+    agent_notes TEXT,
+    gmail_message_id TEXT,
+    gmail_thread_id TEXT,
+    job_url TEXT,
+    location TEXT,
+    salary_info TEXT
+);
+
+-- Job Leads table (for discovered jobs)
+CREATE TABLE IF NOT EXISTS job_leads (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    company TEXT NOT NULL,
+    job_title TEXT NOT NULL,
+    location TEXT,
+    job_url TEXT,
+    salary_info TEXT,
+    job_description TEXT,
+    discovered_at TIMESTAMPTZ DEFAULT NOW(),
+    is_picked BOOLEAN DEFAULT FALSE
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_applications_user_id ON job_applications(user_id);
+CREATE INDEX IF NOT EXISTS idx_applications_status ON job_applications(status);
+CREATE INDEX IF NOT EXISTS idx_leads_user_id ON job_leads(user_id);
+```
+
+6. Go to **Project Settings** → **Database** → Copy **Connection String** (Pooler mode, port 6543)
+
+#### Step 2: Create Hugging Face Space
+
+1. Go to https://huggingface.co/spaces
+2. Click **"Create new Space"**
+3. Fill in:
+   - **Owner**: Your username
+   - **Space name**: `anti-berojgar`
+   - **License**: MIT
+   - **SDK**: **Docker** ⚠️ (Critical - don't select Gradio/Streamlit)
+4. Click **"Create Space"**
+
+#### Step 3: Connect GitHub
+
+1. In your HF Space, go to **Settings** tab
+2. Scroll to **"GitHub repository"**
+3. Click **"Connect a GitHub repository"**
+4. Enter: `S-am-ir/Anti-Berojgar`
+5. Click **"Connect"**
+
+#### Step 4: Add Environment Variables
+
+In HF Space Settings → **"Repository secrets"**, add these:
+
+| Variable | Value | Where to Find |
+|----------|-------|---------------|
+| `SUPABASE_DB_URL` | `postgresql://postgres.xxx:PASSWORD@host.pooler.supabase.com:6543/postgres` | Supabase → Settings → Database → Connection String |
+| `SUPABASE_URL` | `https://YOUR_PROJECT_REF.supabase.co` | Supabase → Settings → API → Project URL |
+| `SUPABASE_KEY` | `eyJhbG...` (anon public key) | Supabase → Settings → API → anon public key |
+| `GEMINI_API_KEY` | `AIzaSy...` | https://aistudio.google.com/apikey |
+| `GROQ_API_KEY` | `gsk_...` | https://console.groq.com/keys |
+| `DEEPSEEK_API_KEY` | `sk-...` | https://platform.deepseek.com/ |
+| `PORT` | `7860` | (Fixed for HF Spaces) |
+
+#### Step 5: Wait for Deployment
+
+- HF will build the Docker container (~5-7 minutes first time)
+- Once status shows **"Running"** (green), your app is live!
+- URL: `https://huggingface.co/spaces/YOUR_USERNAME/anti-berojgar`
+
+---
+
+### Option 2: Local Development
+
+#### Prerequisites
+
+- Python 3.11+
+- Node.js 20+
+- PostgreSQL (local or Supabase)
+
+#### Backend
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env  # Edit with your API keys
+uvicorn main:app --reload --port 8000
+```
+
+#### Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env  # Edit if needed
+npm run dev
+```
+
+Backend: http://localhost:8000
+Frontend: http://localhost:5173
+
+---
+
+## 🤖 Automated Tracking Setup
+
+### How It Works
+
+The app uses **GitHub Actions** to run automated tracking every hour:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    GitHub Actions (Hourly)                   │
+│  Cron: "0 * * * *" → Runs at minute 0 of every hour         │
+│         ↓                                                    │
+│  HTTP POST to: /api/applications/sync?email=user@gmail.com  │
+│         ↓                                                    │
+│  HF Space wakes up → Runs tracking agent                    │
+│         ↓                                                    │
+│  Agent checks Gmail IMAP → Updates database                 │
+│         ↓                                                    │
+│  Returns results → GitHub logs the output                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Workflow File
+
+The GitHub Action is already configured in `.github/workflows/tracking.yml`:
+
+```yaml
+name: Auto Track Job Applications
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Every hour at minute 0
+  workflow_dispatch:      # Manual trigger option
+    inputs:
+      email:
+        description: 'Email to track'
+        required: true
+        default: 'your-email@gmail.com'
+
+jobs:
+  track-applications:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Tracking
+        run: |
+          curl "https://YOUR-HF-SPACE.hf.space/api/applications/sync?email=your-email@gmail.com"
+```
+
+### Enable Automated Tracking
+
+1. **Fork the repository** to your GitHub account
+2. Go to **Settings** → **Actions** → **General**
+3. Under **"Actions permissions"**, select **"Allow all actions"**
+4. Go to **Actions** tab → Select **"Auto Track Job Applications"**
+5. Click **"Enable workflow"**
+
+### Manual Trigger (Test It)
+
+1. Go to **Actions** tab in your GitHub repo
+2. Click **"Auto Track Job Applications"** workflow
+3. Click **"Run workflow"** dropdown
+4. Click **"Run workflow"** button
+5. Watch the logs in real-time (~30 seconds)
+
+### What Gets Tracked
+
+The agent checks Gmail for:
+- **Interview invites** → Status: "Interview"
+- **Offer letters** → Status: "Offered"
+- **Rejection emails** → Status: "Rejected"
+- **Follow-up requests** → Status: "Follow Up"
+- **No response after 5 days** → Auto-marks: "Follow Up"
+- **No response after 7 days** → Auto-marks: "Ghosted"
+
+---
+
+## 📧 Gmail Configuration (Critical for Tracking)
+
+### Why Gmail Tracking Matters
+
+Without Gmail integration:
+- ❌ No automatic status updates
+- ❌ No interview/rejection detection
+- ❌ Manual tracking required
+
+With Gmail integration:
+- ✅ Automatic detection of company responses
+- ✅ Real-time status updates
+- ✅ Direct links to response emails
+- ✅ Time-based follow-up reminders
+
+### Setup Steps
+
+1. **Enable 2FA on Google Account**:
+   - Go to https://myaccount.google.com/security
+   - Enable **2-Step Verification**
+
+2. **Generate App Password**:
+   - Go to https://myaccount.google.com/apppasswords
+   - Select app: **Mail**
+   - Select device: **Other** → Name: `Anti-Berojgar`
+   - Copy the 16-character password
+
+3. **Add to HF Space**:
+   - Go to your HF Space Settings → Repository secrets
+   - Add: `GMAIL_APP_PASSWORD` = (the 16-char password)
+   - Add: `GMAIL_USER` = your-email@gmail.com
+
+4. **In the App**:
+   - Go to Settings page
+   - Enter your Gmail address
+   - Enter the App Password (NOT your regular password)
+   - Click "Save"
+   - Status changes from "Pending" → "Tracking"
+
+---
+
+## 🏗️ Architecture Deep Dive
+
+### System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -48,213 +312,304 @@ AI-powered job application tracker that tailors your resume and automatically tr
         └──────────┘  └──────────┘  └──────────┘
 ```
 
-## Quick Start
+### Component Breakdown
 
-### 1. Deploy on Hugging Face Spaces (Recommended)
+#### Frontend (React + TypeScript + Vite)
 
-1. **Create Supabase Database** (free):
-   - Go to https://supabase.com
-   - Create new project
-   - Copy the **Connection String** (Pooler mode)
+**Key Files:**
+- `frontend/src/App.tsx` - Main app router and layout
+- `frontend/src/pages/Home.tsx` - Resume upload and job matching
+- `frontend/src/components/Applications.tsx` - Application dashboard
+- `frontend/src/components/ResumeSetup.tsx` - Resume upload form
+- `frontend/src/components/Settings.tsx` - Gmail configuration
+- `frontend/src/api.ts` - API client with error handling
 
-2. **Create HF Space**:
-   - Go to https://huggingface.co/spaces
-   - Click "Create new Space"
-   - Name: `anti-berojgar`
-   - License: MIT
-   - **Select "Docker" as SDK**
-   - Click "Create Space"
+**Flow:**
+1. User uploads PDF resume → Frontend sends to `/api/resume/upload`
+2. Backend saves file → Returns `backendPath`
+3. User enters job description → Frontend calls `/api/agent/invoke`
+4. Backend processes → Returns tailored resume path
+5. Frontend creates download link → User downloads PDF
 
-3. **Connect GitHub**:
-   - In your HF Space, go to **Settings**
-   - Scroll to "Repository details"
-   - Click "Connect GitHub Repo"
-   - Select your `Anti-Berojgar` repository
+#### Backend (FastAPI + Python)
 
-4. **Add Environment Variables** (in HF Space Settings → Variables):
-   ```
-   SUPABASE_DB_URL=postgresql://...
-   GEMINI_API_KEY=AIzaSy...
-   GROQ_API_KEY=gsk_...
-   DEEPSEEK_API_KEY=sk-...
-   ```
+**Key Files:**
+- `backend/main.py` - FastAPI app, all REST endpoints
+- `backend/db_helpers.py` - Supabase HTTP client wrappers
+- `backend/database.py` - Supabase client initialization
+- `backend/config.py` - Environment variable management
+- `backend/agent/graph.py` - LangGraph workflow builder
+- `backend/agent/nodes.py` - Agent node implementations
+- `backend/agent/tailor.py` - Resume tailoring logic
+- `backend/agent/email_tracker.py` - Gmail IMAP client
+- `backend/agent/llm.py` - LLM configuration (Gemini, Groq)
 
-5. **Wait for deployment** (~5 minutes)
+**Endpoints:**
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/resume/upload` | POST | Upload PDF resume |
+| `/api/resume/download/{filename}` | GET | Download tailored resume |
+| `/api/agent/invoke` | POST | Trigger agent workflow |
+| `/api/jobs/save` | POST | Save job application |
+| `/api/applications` | GET | Fetch user's applications |
+| `/api/applications/{id}` | DELETE | Delete application |
+| `/api/applications/sync` | GET | Trigger Gmail tracking |
+| `/api/settings/email` | POST/GET | Configure Gmail credentials |
+| `/api/users/{email}` | DELETE | Delete user account |
 
-### 2. Set Up Database
+#### Database (Supabase PostgreSQL)
 
-Run this SQL in your Supabase SQL Editor:
+**Tables:**
 
-```sql
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+**`users`**
+- `id` (UUID) - Primary key
+- `email` (TEXT) - Unique user identifier
+- `name` (TEXT) - Display name
+- `resume_data` (JSONB) - Stored resume metadata
+- `imap_password` (TEXT) - Encrypted Gmail app password
+- `created_at` (TIMESTAMPTZ) - Registration timestamp
 
--- Users table
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email TEXT UNIQUE NOT NULL,
-    name TEXT,
-    oauth_token JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    resume_data JSONB,
-    imap_password TEXT
-);
+**`job_applications`**
+- `id` (UUID) - Primary key
+- `user_id` (UUID) - Foreign key → users.id
+- `company` (TEXT) - Company name
+- `job_title` (TEXT) - Position applied for
+- `job_description` (TEXT) - Full job description
+- `status` (TEXT) - Pending/Tracking/Interview/Offered/Rejected/Ghosted
+- `applied_at` (TIMESTAMPTZ) - Application date
+- `tailored_resume_path` (TEXT) - Path to generated resume
+- `gmail_message_id` (TEXT) - Link to response email
+- `last_checked_at` (TIMESTAMPTZ) - Last tracking check
 
--- Job Applications table
-CREATE TABLE IF NOT EXISTS job_applications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    company TEXT NOT NULL,
-    job_title TEXT NOT NULL,
-    job_description TEXT,
-    status TEXT DEFAULT 'Pending',
-    applied_at TIMESTAMPTZ DEFAULT NOW(),
-    last_checked_at TIMESTAMPTZ,
-    tailored_resume_path TEXT,
-    agent_notes TEXT,
-    gmail_message_id TEXT,
-    gmail_thread_id TEXT,
-    job_url TEXT,
-    location TEXT,
-    salary_info TEXT
-);
+**`job_leads`**
+- `id` (UUID) - Primary key
+- `user_id` (UUID) - Foreign key → users.id
+- `company`, `job_title`, `location`, `job_url`, `salary_info`
+- `discovered_at` (TIMESTAMPTZ) - When job was found
 
--- Create index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_applications_user_id ON job_applications(user_id);
-CREATE INDEX IF NOT EXISTS idx_applications_status ON job_applications(status);
+#### AI/LLM Layer
+
+**Models Used:**
+1. **Gemini 2.0 Flash** (Google) - Resume tailoring, document analysis
+2. **Groq Llama 3.1** (Meta) - Job matching, routing decisions
+3. **DeepSeek V3** (DeepSeek) - Backup LLM, structured output
+
+**Why Multiple LLMs?**
+- **Cost optimization**: Different models have different free tiers
+- **Specialization**: Gemini excels at document understanding, Groq at speed
+- **Redundancy**: If one API fails, fallback to another
+
+**LangGraph Workflow:**
 ```
-
-### 3. Get API Keys
-
-| Service | Purpose | Get From |
-|---------|---------|----------|
-| **Gemini** | Resume tailoring (free, 1500 req/day) | https://aistudio.google.com/apikey |
-| **Groq** | Fast LLM inference (free tier) | https://console.groq.com/keys |
-| **DeepSeek** | Backup LLM (free, 5M tokens/mo) | https://platform.deepseek.com/ |
-
-### 4. Configure Gmail (Optional but Recommended)
-
-1. Enable 2FA on your Google Account
-2. Go to https://myaccount.google.com/apppasswords
-3. Create app password:
-   - App: **Mail**
-   - Device: **Other** → Name: `Anti-Berojgar`
-4. Copy the 16-character password
-5. Add to HF Space variables as `GMAIL_APP_PASSWORD`
+User Input → Router Node → [Tailor | Track] → Result
+                │
+                ├─→ Tailor Request → Mismatch Check → Generate Resume
+                │
+                └─→ Track Request → Gmail IMAP → LLM Analysis → Update DB
+```
 
 ---
 
-## Local Development
+## 🔄 CI/CD Pipeline
 
-### Prerequisites
+### GitHub Actions Workflow
 
-- Python 3.11+
-- Node.js 20+
-- PostgreSQL (or use Supabase free tier)
+**File:** `.github/workflows/tracking.yml`
 
-### Backend Setup
+**Triggers:**
+1. **Scheduled**: Every hour at minute 0 (`cron: '0 * * * *'`)
+2. **Manual**: Via GitHub Actions UI (`workflow_dispatch`)
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env  # Edit with your keys
-uvicorn main:app --reload --port 8000
+**What It Does:**
+```yaml
+1. GitHub scheduler wakes up at :00
+   ↓
+2. Sends HTTP GET to HF Space endpoint
+   ↓
+3. HF Space container wakes up (if sleeping)
+   ↓
+4. FastAPI receives /api/applications/sync
+   ↓
+5. Calls invoke_agent() with user's email
+   ↓
+6. Agent's track_applications() node runs
+   ↓
+7. Connects to Gmail IMAP
+   ↓
+8. Fetches recent emails (last 10)
+   ↓
+9. LLM analyzes emails → matches to applications
+   ↓
+10. Updates database with new statuses
+   ↓
+11. Returns summary to GitHub Actions
+   ↓
+12. GitHub logs the results
 ```
 
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-cp .env.example .env  # Edit if needed
-npm run dev
+**Example Output:**
+```
+🔄 Starting job application tracking...
+Response: {"status": "success", "messages": ["Found 2 updates: 1 Interview, 1 Follow-up"]}
+HTTP Status: 200
+✅ Tracking completed successfully!
 ```
 
-### Run Tests
+---
+
+## 💰 Cost Breakdown
+
+**100% Free** with these limits:
+
+| Service | Free Tier | Usage |
+|---------|-----------|-------|
+| **Hugging Face Spaces** | Unlimited | Hosting (CPU, 16GB RAM) |
+| **Supabase** | 500MB DB | ~10,000+ applications |
+| **Gemini API** | 1500 req/day | ~50 resumes/day |
+| **Groq** | Free tier | ~100 matching checks/day |
+| **DeepSeek** | 5M tokens/month | Backup LLM |
+| **GitHub Actions** | 2000 minutes/month | ~60 hours of tracking |
+| **Gmail IMAP** | Free | Unlimited tracking |
+
+**Real-world usage:**
+- 100 applications/month → Uses ~10% of Gemini quota
+- Hourly tracking → Uses ~50 GitHub Actions minutes/month
+- Database storage → ~50MB for 1000 applications
+
+---
+
+## 🧪 Testing
+
+### Manual Testing Checklist
+
+1. **Resume Upload**:
+   - [ ] Upload PDF resume
+   - [ ] Verify file saved in `backend/uploads/`
+   - [ ] Check database entry created
+
+2. **Job Matching**:
+   - [ ] Enter job description
+   - [ ] Click "Check & Tailor"
+   - [ ] Verify LLM returns "tailor" or "track" mode
+   - [ ] Check mismatch detection works
+
+3. **Resume Tailoring**:
+   - [ ] Wait for AI processing (~30 seconds)
+   - [ ] Download link appears
+   - [ ] PDF downloads successfully
+   - [ ] Resume contains job-specific keywords
+
+4. **Application Tracking**:
+   - [ ] Save a job application
+   - [ ] Configure Gmail credentials
+   - [ ] Status changes to "Tracking"
+   - [ ] Trigger manual sync (GitHub Actions)
+   - [ ] Verify Gmail emails checked
+   - [ ] Status updates if response found
+
+5. **Time-Based Updates**:
+   - [ ] Create application with old date
+   - [ ] Run tracking
+   - [ ] Verify "Ghosted" after 7 days
+   - [ ] Verify "Follow Up" after 5 days
+
+### Automated Tests
 
 ```bash
 cd backend
 pytest tests/ -v
 ```
 
----
-
-## Project Structure
-
-```
-Anti-Berojgar/
-├── backend/
-│   ├── main.py              # FastAPI app
-│   ├── agent/
-│   │   ├── graph.py         # LangGraph workflow
-│   │   ├── nodes.py         # Agent nodes (tailor, track)
-│   │   ├── tailor.py        # Resume tailoring logic
-│   │   ├── email_tracker.py # Gmail IMAP tracking
-│   │   └── llm.py          # LLM configuration
-│   ├── config.py            # Environment config
-│   └── database.py          # DB initialization
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx          # Main app component
-│   │   ├── pages/
-│   │   │   ├── Home.tsx     # Resume upload & tailoring
-│   │   │   └── ...
-│   │   └── api.ts           # API client
-│   └── package.json
-├── Dockerfile               # HF Spaces deployment
-├── requirements.txt         # Python dependencies
-└── README.md
-```
+**Test Coverage:**
+- Unit tests for resume parser
+- Integration tests for agent workflow
+- Mock tests for Gmail IMAP
+- Database migration tests
 
 ---
 
-## Tech Stack
+## 🐛 Troubleshooting
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React 18, TypeScript, Vite |
-| **Backend** | FastAPI, Python 3.11 |
-| **AI/LLM** | LangChain, LangGraph, Gemini 2.0 Flash, Groq |
-| **Database** | PostgreSQL (Supabase) |
-| **Email** | Gmail IMAP |
-| **Deployment** | Hugging Face Spaces Docker |
+### "No resume uploaded" Error
+
+**Cause:** File upload failed or database save failed.
+
+**Fix:**
+1. Check HF Space logs for upload errors
+2. Verify `SUPABASE_DB_URL` is correct
+3. Ensure PDF file is valid (not corrupted)
+
+### Database Connection Errors
+
+**Cause:** Supabase URL incorrect or network blocked.
+
+**Fix:**
+1. Use **Pooler** connection string (port 6543)
+2. Verify password is correct (no typos)
+3. Check Supabase project is active
+
+### Gmail Tracking Not Working
+
+**Cause:** Wrong password or 2FA not enabled.
+
+**Fix:**
+1. Enable 2FA on Google Account
+2. Use **App Password**, not regular password
+3. Verify `GMAIL_USER` matches the email
+4. Check IMAP is enabled in Gmail settings
+
+### GitHub Actions Not Running
+
+**Cause:** Actions disabled or permissions wrong.
+
+**Fix:**
+1. Go to Repo Settings → Actions → Enable
+2. Check workflow file syntax
+3. Manually trigger to test
+
+### HF Space Shows "Error"
+
+**Cause:** Missing environment variables or build failed.
+
+**Fix:**
+1. Check all 7 secrets are added
+2. Review build logs for errors
+3. Restart the Space (Settings → Factory reboot)
 
 ---
 
-## Cost
+## 📚 Additional Resources
 
-**100% Free** when using:
-- Hugging Face Spaces (free Docker hosting)
-- Supabase (free tier: 500MB DB, enough for 10k+ applications)
-- Gemini API (free: 1500 requests/day)
-- Groq (free tier available)
-- Gmail IMAP (free)
-
----
-
-## Troubleshooting
-
-### "No resume uploaded" error
-- Make sure you uploaded a PDF before clicking "Check & Tailor"
-- Check HF Space logs for upload errors
-
-### Database connection errors
-- Verify `SUPABASE_DB_URL` is correct (use Pooler URL)
-- Make sure you ran the SQL migration
-
-### Gmail tracking not working
-- Ensure 2FA is enabled on Google Account
-- Use App Password, not regular password
-- Check `GMAIL_USER` matches the email
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [Supabase Python Client](https://supabase.com/docs/reference/python)
+- [Gmail IMAP Guide](https://support.google.com/mail/answer/7126229)
+- [GitHub Actions Cron Syntax](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#schedule)
+- [Hugging Face Spaces Docker](https://huggingface.co/docs/hub/spaces-sdks-docker)
 
 ---
 
-## License
+## 🤝 Contributing
 
-MIT License - feel free to use for personal or commercial projects.
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
 
 ---
 
-**Built with ❤️ for job seekers everywhere**
+## 📄 License
+
+MIT License - Free for personal and commercial use.
+
+---
+
+## 🙏 Acknowledgments
+
+- Built for job seekers tired of manual tracking
+- Inspired by the frustration of ghosting after interviews
+- Made possible by free tiers of amazing services
+
+---
+
+**Built with ❤️ by S-amir** | [GitHub](https://github.com/S-am-ir/Anti-Berojgar) | [Live Demo](https://huggingface.co/spaces/S-a-mir/anti-berojgar)
