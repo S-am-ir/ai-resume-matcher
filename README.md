@@ -10,6 +10,44 @@ AI-powered job application tracker that tailors your resume and automatically tr
 - ⏰ **Smart Status Updates** - Auto-marks as "Follow Up" (5 days) or "Ghosted" (7 days)
 - 📊 **Application Dashboard** - Track all your applications in one place
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         USER INTERFACE                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │   Resume     │  │   Job        │  │  Application │         │
+│  │   Upload     │  │   Matching   │  │  Dashboard   │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      FASTAPI BACKEND                            │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐    │
+│  │  Resume Parser │  │  Match Analyzer│  │  Gmail Tracker │    │
+│  │  (PDF → Text)  │  │  (LLM Eval)    │  │  (IMAP Poll)   │    │
+│  └────────────────┘  └────────────────┘  └────────────────┘    │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              LangGraph Agent Workflow                     │  │
+│  │  ┌─────────┐    ┌──────────┐    ┌──────────┐            │  │
+│  │  │ Tailor  │───▶│ Mismatch │───▶│ Generate │            │  │
+│  │  │ Request │    │  Check   │    │  Resume  │            │  │
+│  │  └─────────┘    └──────────┘    └──────────┘            │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                ┌─────────────┼─────────────┐
+                ▼             ▼             ▼
+        ┌──────────┐  ┌──────────┐  ┌──────────┐
+        │  Gemini  │  │  Groq    │  │ Supabase │
+        │  2.0     │  │  Llama   │  │ Postgres │
+        │  Flash   │  │  3.1     │  │  (Free)  │
+        └──────────┘  └──────────┘  └──────────┘
+```
+
 ## Quick Start
 
 ### 1. Deploy on Hugging Face Spaces (Recommended)
