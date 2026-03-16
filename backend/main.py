@@ -20,7 +20,7 @@ from agent.graph import build_graph
 from db_helpers import (
     get_or_create_user, save_resume, save_job_application, get_applications as get_apps,
     delete_application as delete_app, save_email_settings as save_email, delete_user as delete_user_helper, reset_tracking as reset_tracking_helper,
-    has_email_password, save_job_lead, get_job_leads
+    has_email_password, save_job_lead, get_job_leads, get_email_password
 )
 
 # Allow HTTP traffic for local dev
@@ -43,25 +43,35 @@ async def lifespan(app: FastAPI):
 async def background_tracking_loop():
     """Automatically track all users' applications every 60 minutes."""
     print("[BACKGROUND] Starting auto-tracking loop (every 60 minutes)...")
-    
+
     while True:
         try:
             await asyncio.sleep(3600)  # Wait 60 minutes
-            
-            # Get all users with Gmail credentials
-            db_url = settings.SUPABASE_DB_URL
-            if not db_url:
+
+            # Get all users with Gmail credentials using Supabase client
+            from database import supabase
+            if not supabase:
+                print("[BACKGROUND] Supabase client not available, skipping tracking cycle")
+                await asyncio.sleep(300)
                 continue
-            
-            conn = await asyncpg.connect(db_url)
-            users = await conn.fetch('SELECT email, imap_password FROM users WHERE imap_password IS NOT NULL')
-            
+
+            # Fetch all users with imap_password set
+            response = supabase.table("users").select("email, imap_password").execute()
+            users = response.data or []
+
             for user in users:
-                email = user['email']
-                app_password = user['imap_password']
-                
+                email = user.get('email')
+                encrypted_password = user.get('imap_password')
+
+                if not email or not encrypted_password:
+                    continue
+
+                # Decrypt password (handles both encrypted and plaintext passwords)
+                from encryption import decrypt_password
+                app_password = decrypt_password(encrypted_password)
+
                 print(f"[BACKGROUND] Tracking applications for {email}...")
-                
+
                 # Invoke tracking agent
                 graph = build_graph()
                 result = await graph.ainvoke({
@@ -69,13 +79,12 @@ async def background_tracking_loop():
                     "user_email": email,
                     "user_resume_data": {"imap_password": app_password}
                 })
-                
+
                 if result.get("tracking_updates"):
                     print(f"[BACKGROUND] Found {len(result['tracking_updates'])} updates for {email}")
-            
-            await conn.close()
+
             print("[BACKGROUND] Tracking cycle complete")
-            
+
         except Exception as e:
             print(f"[BACKGROUND] Error in tracking loop: {e}")
             await asyncio.sleep(300)  # Wait 5 minutes before retrying
@@ -133,37 +142,39 @@ async def upload_resume(file: UploadFile = File(...), email: Optional[str] = Non
         print(f"[UPLOAD] File saved successfully")
 
         # If email provided, save to database
-        if email and settings.SUPABASE_DB_URL:
+        if email:
             print(f"[UPLOAD] Attempting to save to DB for email: {email}")
             try:
-                conn = await asyncpg.connect(settings.SUPABASE_DB_URL)
-                await conn.execute('''
-                    INSERT INTO users (email, resume_data)
-                    VALUES ($1, $2)
-                    ON CONFLICT (email) DO UPDATE SET resume_data = $2
-                ''', email, json.dumps({"visual_path": file_path, "original_name": file.filename}))
-                await conn.close()
-                print(f"[UPLOAD] DB save successful")
+                from database import supabase
+                if supabase:
+                    # Check if user exists
+                    user_response = supabase.table("users").select("id").eq("email", email).execute()
+                    if user_response.data and user_response.data:
+                        # Update existing user
+                        supabase.table("users").update({"resume_data": {"visual_path": file_path, "original_name": file.filename}}).eq("email", email).execute()
+                    else:
+                        # Insert new user
+                        supabase.table("users").insert({"email": email, "resume_data": {"visual_path": file_path, "original_name": file.filename}}).execute()
+                    print(f"[UPLOAD] DB save successful")
+                else:
+                    print(f"[UPLOAD] Supabase client not available")
             except Exception as db_err:
                 print(f"[UPLOAD] DB save failed: {db_err}")
-        elif settings.SUPABASE_DB_URL:
+        else:
             # Save to DB with anonymous email if no email provided
             try:
-                anonymous_email = f"anonymous_{uuid.uuid4()}@temp.local"
-                conn = await asyncpg.connect(settings.SUPABASE_DB_URL)
-                await conn.execute('''
-                    INSERT INTO users (email, resume_data)
-                    VALUES ($1, $2)
-                ''', anonymous_email, json.dumps({"visual_path": file_path, "original_name": file.filename, "anonymous": True}))
-                await conn.close()
-                # Return the anonymous email for localStorage
-                return {
-                    "status": "success",
-                    "file_path": file_path,
-                    "original_name": file.filename,
-                    "anonymous_email": anonymous_email,
-                    "message": "Resume uploaded successfully (anonymous)"
-                }
+                from database import supabase
+                if supabase:
+                    anonymous_email = f"anonymous_{uuid.uuid4()}@temp.local"
+                    supabase.table("users").insert({"email": anonymous_email, "resume_data": {"visual_path": file_path, "original_name": file.filename, "anonymous": True}}).execute()
+                    # Return the anonymous email for localStorage
+                    return {
+                        "status": "success",
+                        "file_path": file_path,
+                        "original_name": file.filename,
+                        "anonymous_email": anonymous_email,
+                        "message": "Resume uploaded successfully (anonymous)"
+                    }
             except Exception as db_err:
                 print(f"Warning: Could not save anonymous resume to DB: {db_err}")
 
@@ -196,42 +207,53 @@ async def invoke_agent(req: AgentRequest):
         print(f"[API] user_email: {req.user_email}")
         print(f"[API] user_resume_data: {req.user_resume_data}")
         print(f"[API] job_description length: {len(req.job_description) if req.job_description else 0}")
-        
+
         # Start with resume data from request (frontend sends backendPath)
         user_context = req.user_resume_data or {}
         print(f"[API] Initial user_context from request: {user_context}")
 
         # Try to load additional data from database if email is provided
-        if req.user_email and settings.SUPABASE_DB_URL:
+        if req.user_email:
             print(f"[API] Attempting DB lookup...")
             try:
-                conn = await asyncpg.connect(settings.SUPABASE_DB_URL)
-                user_record = await conn.fetchrow(
-                    "SELECT id, resume_data FROM users WHERE email = $1",
-                    req.user_email
-                )
-                print(f"[API] DB user_record: {user_record}")
-                if not user_record:
-                    # Auto-create user if they don't exist (since we skipped OAuth)
-                    await conn.execute("INSERT INTO users (email) VALUES ($1)", req.user_email)
-                    user_record = await conn.fetchrow("SELECT id, resume_data FROM users WHERE email = $1", req.user_email)
-                    print(f"[API] Created new user: {user_record}")
+                from database import supabase
+                if supabase:
+                    # Get user from Supabase
+                    user_response = supabase.table("users").select("id, resume_data, imap_password").eq("email", req.user_email).execute()
+                    user_records = user_response.data or []
+                    user_record = user_records[0] if user_records else None
 
-                if user_record:
-                    db_resume = user_record.get('resume_data') or {}
-                    db_imap = user_record.get('imap_password')
+                    print(f"[API] DB user_record: {user_record}")
+                    if not user_record:
+                        # Auto-create user if they don't exist (since we skipped OAuth)
+                        supabase.table("users").insert({"email": req.user_email}).execute()
+                        user_response = supabase.table("users").select("id, resume_data, imap_password").eq("email", req.user_email).execute()
+                        user_records = user_response.data or []
+                        user_record = user_records[0] if user_records else None
+                        print(f"[API] Created new user: {user_record}")
 
-                    resume_dict = db_resume if isinstance(db_resume, dict) else json.loads(db_resume) if db_resume else {}
-                    print(f"[API] resume_dict from DB: {resume_dict}")
+                    if user_record:
+                        db_resume = user_record.get('resume_data') or {}
+                        db_imap_encrypted = user_record.get('imap_password')
 
-                    # Merge: request data takes priority, DB data as fallback
-                    user_context = {
-                        **resume_dict,  # DB data (has visual_path if saved)
-                        **user_context,  # Request data (has backendPath from frontend)
-                        "imap_password": db_imap
-                    }
-                await conn.close()
-                print(f"[API] DB lookup successful")
+                        # Decrypt password if it exists (handles both encrypted and plaintext)
+                        db_imap = None
+                        if db_imap_encrypted:
+                            from encryption import decrypt_password
+                            db_imap = decrypt_password(db_imap_encrypted)
+
+                        resume_dict = db_resume if isinstance(db_resume, dict) else json.loads(db_resume) if db_resume else {}
+                        print(f"[API] resume_dict from DB: {resume_dict}")
+
+                        # Merge: request data takes priority, DB data as fallback
+                        user_context = {
+                            **resume_dict,  # DB data (has visual_path if saved)
+                            **user_context,  # Request data (has backendPath from frontend)
+                            "imap_password": db_imap
+                        }
+                    print(f"[API] DB lookup successful")
+                else:
+                    print(f"[API] Supabase client not available")
             except Exception as db_err:
                 print(f"[API] DB lookup failed (continuing with request data): {db_err}")
         else:
@@ -252,7 +274,7 @@ async def invoke_agent(req: AgentRequest):
         for m in req.messages:
             if m.get("content"):
                 langchain_messages.append(HumanMessage(content=m["content"]))
-        
+
         # If no messages, add a default one
         if not langchain_messages:
             langchain_messages.append(HumanMessage(content="Tailor my resume"))
@@ -263,7 +285,7 @@ async def invoke_agent(req: AgentRequest):
             "user_resume_data": user_context,
             "job_description": req.job_description
         }
-        
+
         # Execute workflow
         result = await graph.ainvoke(initial_state)
 
@@ -318,44 +340,42 @@ async def add_job_by_url(req: AddJobByUrlRequest):
     Scrapes the job details automatically and saves to database.
     """
     from job_url_scraper import scrape_job_from_url
-    
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
-        raise HTTPException(status_code=500, detail="Database URL not configured")
-    
+    from database import supabase
+
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
     # Scrape job details from URL
     print(f"[API] Scraping job from: {req.job_url}")
     job_data = await scrape_job_from_url(req.job_url)
-    
+
     if not job_data:
         raise HTTPException(
             status_code=400,
             detail="Could not extract job information from this URL. The page may be blocked, require login, or not be a valid job posting."
         )
-    
+
     print(f"[API] Scraped: {job_data.get('job_title')} at {job_data.get('company')}")
-    
+
     try:
-        conn = await asyncpg.connect(db_url)
-        user = await conn.fetchrow("SELECT id FROM users WHERE email = $1", req.user_email)
-        if not user:
-            await conn.close()
+        # Get user ID
+        user_response = supabase.table("users").select("id").eq("email", req.user_email).execute()
+        if not user_response.data or not user_response.data:
             raise HTTPException(status_code=404, detail="User not found. Please log in first.")
-        
-        await conn.execute('''
-            INSERT INTO job_leads (user_id, company, job_title, location, job_url, salary_info, job_description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ''', user['id'], 
-            job_data.get('company', 'Unknown'),
-            job_data.get('job_title', ''),
-            job_data.get('location', 'Remote'),
-            job_data.get('job_url', ''),
-            None,  # salary_info
-            job_data.get('job_description', '')
-        )
-        
-        await conn.close()
-        
+
+        user_id = user_response.data[0]["id"]
+
+        # Insert job lead
+        supabase.table("job_leads").insert({
+            "user_id": user_id,
+            "company": job_data.get('company', 'Unknown'),
+            "job_title": job_data.get('job_title', ''),
+            "location": job_data.get('location', 'Remote'),
+            "job_url": job_data.get('job_url', ''),
+            "salary_info": None,
+            "job_description": job_data.get('job_description', '')
+        }).execute()
+
         return {
             "status": "success",
             "message": "Job added to tracking.",
@@ -402,20 +422,21 @@ async def save_job_lead(req: JobLeadRequest):
 @app.get("/api/jobs/leads")
 async def get_job_leads(email: str):
     """Fetch saved job leads for a user."""
-    db_url = settings.SUPABASE_DB_URL
-    if not db_url:
+    from database import supabase
+    if not supabase:
         return []
-        
+
     try:
-        conn = await asyncpg.connect(db_url)
-        rows = await conn.fetch('''
-            SELECT jl.* FROM job_leads jl
-            JOIN users u ON jl.user_id = u.id
-            WHERE u.email = $1
-            ORDER BY jl.discovered_at DESC
-        ''', email)
-        await conn.close()
-        return [dict(r) for r in rows]
+        # Get user ID first
+        user_response = supabase.table("users").select("id").eq("email", email).execute()
+        if not user_response.data or not user_response.data:
+            return []
+
+        user_id = user_response.data[0]["id"]
+
+        # Get job leads for this user
+        leads_response = supabase.table("job_leads").select("*").eq("user_id", user_id).order("discovered_at", desc=True).execute()
+        return leads_response.data or []
     except Exception as e:
         print(f"Error fetching leads: {e}")
         return []

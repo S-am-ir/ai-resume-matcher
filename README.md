@@ -272,6 +272,63 @@ With Gmail integration:
 
 ---
 
+## 🔒 Security: IMAP Password Encryption
+
+### Overview
+
+Anti-Berojgar uses **Fernet symmetric encryption** to protect Gmail IMAP passwords stored in the database. This ensures that even if the database is compromised, your Gmail credentials remain secure.
+
+### How It Works
+
+1. **Encryption at Rest**: When you save your Gmail App Password, it's encrypted using Fernet (AES-128-CBC) before being stored in Supabase
+2. **Decryption on Use**: When the tracking agent runs, it decrypts the password in memory only for the IMAP connection
+3. **Key Security**: The encryption key is stored ONLY in HF Spaces secrets - never in code or database
+
+### Setup for Deployment
+
+**Generate an encryption key ONCE:**
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+This outputs something like: `ZmDd5jQqK8H3yL9mN2pR7sT1vW4xY6zA8bC0dE2fG5h=`
+
+**Add to HF Spaces secrets:**
+1. Go to your HF Space → Settings → Repository secrets
+2. Add new secret: `ENCRYPTION_KEY` = (the generated key)
+3. Save
+
+⚠️ **CRITICAL**: 
+- **NEVER lose this key** - all encrypted passwords become unrecoverable
+- **NEVER commit to git** - always store in secrets only
+- **Generate once** - use the same key for the lifetime of your deployment
+
+### What If I Lose the Key?
+
+If the encryption key is lost:
+1. Existing encrypted passwords cannot be decrypted
+2. Users must re-enter their Gmail App Passwords
+3. The app will still work - just re-save credentials
+
+### Why Not Hash the Password?
+
+Hashing is one-way (good for login passwords), but IMAP passwords need to be:
+- **Reversible**: We need the actual password to log in to Gmail
+- **Secure at rest**: Encrypted in the database
+- **Fast**: No performance impact on tracking
+
+Fernet provides perfect security for this use case.
+
+### Backward Compatibility
+
+The encryption system is **backward compatible**:
+- If encryption is not configured → passwords stored as plaintext (still works)
+- If encryption is configured → new passwords encrypted, old ones detected and used
+- Graceful fallback if decryption fails → treats as plaintext
+
+---
+
 ## 🏗️ Architecture Deep Dive
 
 ### System Overview

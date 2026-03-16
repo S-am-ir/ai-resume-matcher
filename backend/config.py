@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     GMAIL_APP_PASSWORD: str = os.getenv("GMAIL_APP_PASSWORD", "")
     MCP_JOBS_HOST: str = os.getenv("MCP_JOBS_HOST", "127.0.0.1")
     MCP_JOBS_PORT: int = int(os.getenv("MCP_JOBS_PORT", 8005))
+    # Encryption key for IMAP passwords (Fernet symmetric encryption)
+    ENCRYPTION_KEY: str = os.getenv("ENCRYPTION_KEY", "")
 
     class Config:
         env_file = ".env"

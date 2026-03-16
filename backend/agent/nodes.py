@@ -116,10 +116,9 @@ async def tailor_resume(state: AgentState):
 async def track_applications(state: AgentState):
     """Track job applications via Gmail IMAP - analyzes emails and updates statuses automatically."""
     from .email_tracker import fetch_recent_application_threads
-    import asyncpg
-    import json
     from datetime import datetime, timedelta
     from config import settings
+    from database import supabase
 
     user_email = state.get("user_email") or settings.GMAIL_USER
     app_password = state.get("user_resume_data", {}).get("imap_password") or settings.GMAIL_APP_PASSWORD
@@ -129,19 +128,16 @@ async def track_applications(state: AgentState):
         return {"messages": [error_msg], "errors": ["Missing Credentials"]}
 
     # Fetch current applications from DB
-    db_url = settings.SUPABASE_DB_URL
     db_apps = []
-    if db_url:
+    if supabase:
         try:
-            conn = await asyncpg.connect(db_url)
-            rows = await conn.fetch('''
-                SELECT ja.id, ja.company, ja.job_title, ja.status, ja.gmail_thread_id, ja.job_url, ja.applied_at, ja.last_checked_at
-                FROM job_applications ja
-                JOIN users u ON ja.user_id = u.id
-                WHERE u.email = $1
-            ''', user_email)
-            db_apps = [dict(r) for r in rows]
-            await conn.close()
+            # Get user ID first
+            user_response = supabase.table("users").select("id").eq("email", user_email).execute()
+            if user_response.data and user_response.data:
+                user_id = user_response.data[0]["id"]
+                # Get applications for this user
+                apps_response = supabase.table("job_applications").select("id, company, job_title, status, gmail_thread_id, job_url, applied_at, last_checked_at").eq("user_id", user_id).execute()
+                db_apps = apps_response.data or []
         except Exception as e:
             print(f"Error fetching apps for tracking: {e}")
 
@@ -152,19 +148,19 @@ async def track_applications(state: AgentState):
     print("[TRACK] Checking time-based status updates...")
     now = datetime.now()
     updates_needed = []
-    
+
     for app in db_apps:
         if not app.get('applied_at'):
             continue
-            
+
         applied_date = app['applied_at']
         if hasattr(applied_date, 'date'):
             days_since_applied = (now - applied_date).days
         else:
             days_since_applied = 0
-        
+
         current_status = app.get('status', '').lower()
-        
+
         # Only update if still in Tracking status
         if current_status == 'tracking':
             if days_since_applied >= 7:
@@ -173,17 +169,11 @@ async def track_applications(state: AgentState):
             elif days_since_applied >= 5:
                 updates_needed.append((app['id'], 'Follow Up', f'Consider following up after {days_since_applied} days'))
                 print(f"[TRACK] {app['job_title']} at {app['company']} → Follow Up ({days_since_applied} days)")
-    
+
     # Apply time-based updates
-    if updates_needed and db_url:
-        conn = await asyncpg.connect(db_url)
+    if updates_needed and supabase:
         for app_id, new_status, note in updates_needed:
-            await conn.execute('''
-                UPDATE job_applications 
-                SET status = $1, notes = $2, last_checked_at = NOW()
-                WHERE id = $3
-            ''', new_status, note, app_id)
-        await conn.close()
+            supabase.table("job_applications").update({"status": new_status, "agent_notes": note, "last_checked_at": datetime.now().isoformat()}).eq("id", app_id).execute()
         print(f"[TRACK] Applied {len(updates_needed)} time-based updates")
 
     # Step 2: Fetch Gmail threads and analyze for responses
@@ -247,42 +237,41 @@ Rules:
     # Parse LLM response and update database
     try:
         import re
+        import json
         content = response.content.strip()
-        
+
         # Extract JSON from response
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
             content = json_match.group()
-        
+
         result = json.loads(content)
-        
+
         # Update database with email-based status changes
-        if db_url and "updates" in result:
-            conn = await asyncpg.connect(db_url)
+        if supabase and "updates" in result:
             for update in result["updates"]:
                 app_id = update.get("application_id")
                 new_status = update.get("new_status")
                 gmail_id = update.get("gmail_message_id")
                 notes = update.get("notes", "")
-                
+
                 if app_id and new_status:
                     try:
-                        await conn.execute('''
-                            UPDATE job_applications 
-                            SET status = $1, gmail_message_id = $2, notes = $3, last_checked_at = NOW()
-                            WHERE id = $4
-                        ''', new_status, gmail_id, f"[{new_status}] {notes}", app_id)
+                        supabase.table("job_applications").update({
+                            "status": new_status,
+                            "gmail_thread_id": gmail_id,
+                            "agent_notes": f"[{new_status}] {notes}",
+                            "last_checked_at": datetime.now().isoformat()
+                        }).eq("id", app_id).execute()
                         print(f"[TRACK] Updated application {app_id} → {new_status}")
                     except Exception as e:
                         print(f"[TRACK] Failed to update {app_id}: {e}")
-            
-            await conn.close()
-            
+
         return {
             "messages": [SystemMessage(content=result.get("summary", "Tracking complete"))],
             "tracking_updates": result.get("updates", [])
         }
-        
+
     except Exception as e:
         print(f"[TRACK] Failed to parse/update: {e}")
         return {"messages": [response]}

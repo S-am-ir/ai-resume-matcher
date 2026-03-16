@@ -2,6 +2,7 @@
 from database import supabase
 from typing import Optional, Dict, Any, List
 import uuid
+from encryption import encrypt_password, decrypt_password
 
 def get_or_create_user(email: str) -> Optional[Dict[str, Any]]:
     """Get or create user by email."""
@@ -103,20 +104,23 @@ def delete_application(app_id: str) -> bool:
         return False
 
 def save_email_settings(email: str, imap_password: str) -> bool:
-    """Save Gmail IMAP password for user."""
+    """Save Gmail IMAP password for user (encrypted at rest)."""
     if not supabase:
         return False
-    
+
     try:
         user = get_or_create_user(email)
         if not user:
             return False
-        
-        response = supabase.table("users").update({"imap_password": imap_password}).eq("email", email).execute()
-        
+
+        # Encrypt password before storing (backward compatible if encryption not enabled)
+        encrypted_password = encrypt_password(imap_password)
+
+        response = supabase.table("users").update({"imap_password": encrypted_password}).eq("email", email).execute()
+
         # Update all Pending jobs to Tracking
         supabase.table("job_applications").update({"status": "Tracking"}).eq("user_id", user["id"]).eq("status", "Pending").execute()
-        
+
         return response.data is not None
     except Exception as e:
         print(f"Error saving email settings: {e}")
@@ -167,19 +171,40 @@ def reset_tracking(email: str) -> bool:
         return False
 
 def has_email_password(email: str) -> bool:
-    """Check if user has Gmail password set."""
+    """Check if user has Gmail password set (encrypted or plaintext)."""
     if not supabase:
         return False
-    
+
     try:
         user = get_or_create_user(email)
         if not user:
             return False
-        
+
         return bool(user.get("imap_password"))
     except Exception as e:
         print(f"Error checking password: {e}")
         return False
+
+
+def get_email_password(email: str) -> Optional[str]:
+    """Get decrypted Gmail IMAP password for user."""
+    if not supabase:
+        return None
+
+    try:
+        user = get_or_create_user(email)
+        if not user:
+            return None
+
+        encrypted_password = user.get("imap_password")
+        if not encrypted_password:
+            return None
+
+        # Decrypt password (backward compatible if stored as plaintext)
+        return decrypt_password(encrypted_password)
+    except Exception as e:
+        print(f"Error getting email password: {e}")
+        return None
 
 def save_job_lead(user_email: str, company: str, job_title: str,
                   location: Optional[str] = None, job_url: Optional[str] = None,
