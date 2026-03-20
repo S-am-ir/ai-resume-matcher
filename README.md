@@ -1,4 +1,4 @@
-# Resume-matching-with-tailoring-and-job-tracking-system
+# Resume-matching/tailoring-with-gmail-tracking-system
 
 **AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.**
 
