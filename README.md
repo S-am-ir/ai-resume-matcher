@@ -1,4 +1,4 @@
-# ai-resume-matcher
+# Anti-Berojgar
 
 **AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.**
 
