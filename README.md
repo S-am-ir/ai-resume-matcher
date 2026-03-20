@@ -2,7 +2,7 @@
 
 **AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.**
 
-Anti-Berojgar is an intelligent job search assistant that:
+ai-resume-matcher is an intelligent job search assistant that:
 -  Tailors your resume to each job description using AI
 -  Evaluates job-resume matching before you apply
 -  Automatically tracks application responses from Gmail
