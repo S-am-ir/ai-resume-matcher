@@ -2,7 +2,7 @@
 
 **AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.**
 
-Anti-Berojgar (Hindi for "Unemployed") is an intelligent job search assistant that:
+Anti-Berojgar is an intelligent job search assistant that:
 -  Tailors your resume to each job description using AI
 -  Evaluates job-resume matching before you apply
 -  Automatically tracks application responses from Gmail
@@ -11,7 +11,7 @@ Anti-Berojgar (Hindi for "Unemployed") is an intelligent job search assistant th
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Option 1: Deploy on Hugging Face Spaces (Recommended - 100% Free)
 
@@ -231,7 +231,7 @@ The agent checks Gmail for:
 
 ---
 
-## 📧 Gmail Configuration (Critical for Tracking)
+## Gmail Configuration 
 
 ### Why Gmail Tracking Matters
 
@@ -272,7 +272,7 @@ With Gmail integration:
 
 ---
 
-## 🔒 Security: IMAP Password Encryption
+## Security: IMAP Password Encryption
 
 ### Overview
 
