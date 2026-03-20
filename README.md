@@ -1,13 +1,13 @@
-# Anti-Berojgar 🎯
+# Resume-matching-with-tailoring-and-job-tracking-system
 
 **AI-powered job application tracker that tailors your resume and automatically tracks applications via Gmail.**
 
 Anti-Berojgar (Hindi for "Unemployed") is an intelligent job search assistant that:
-- ✨ Tailors your resume to each job description using AI
-- 🎯 Evaluates job-resume matching before you apply
-- 📧 Automatically tracks application responses from Gmail
-- ⏰ Updates statuses based on email responses AND time elapsed
-- 🔄 Runs hourly automated tracking via GitHub Actions
+-  Tailors your resume to each job description using AI
+-  Evaluates job-resume matching before you apply
+-  Automatically tracks application responses from Gmail
+-  Updates statuses based on email responses AND time elapsed
+-  Runs hourly automated tracking via GitHub Actions
 
 ---
 
@@ -156,7 +156,7 @@ Frontend: http://localhost:5173
 
 ---
 
-## 🤖 Automated Tracking Setup
+##  Automated Tracking Setup
 
 ### How It Works
 
@@ -514,26 +514,6 @@ HTTP Status: 200
 
 ---
 
-## 💰 Cost Breakdown
-
-**100% Free** with these limits:
-
-| Service | Free Tier | Usage |
-|---------|-----------|-------|
-| **Hugging Face Spaces** | Unlimited | Hosting (CPU, 16GB RAM) |
-| **Supabase** | 500MB DB | ~10,000+ applications |
-| **Gemini API** | 1500 req/day | ~50 resumes/day |
-| **Groq** | Free tier | ~100 matching checks/day |
-| **DeepSeek** | 5M tokens/month | Backup LLM |
-| **GitHub Actions** | 2000 minutes/month | ~60 hours of tracking |
-| **Gmail IMAP** | Free | Unlimited tracking |
-
-**Real-world usage:**
-- 100 applications/month → Uses ~10% of Gemini quota
-- Hourly tracking → Uses ~50 GitHub Actions minutes/month
-- Database storage → ~50MB for 1000 applications
-
----
 
 ## 🧪 Testing
 
@@ -585,88 +565,4 @@ pytest tests/ -v
 
 ---
 
-## 🐛 Troubleshooting
-
-### "No resume uploaded" Error
-
-**Cause:** File upload failed or database save failed.
-
-**Fix:**
-1. Check HF Space logs for upload errors
-2. Verify `SUPABASE_DB_URL` is correct
-3. Ensure PDF file is valid (not corrupted)
-
-### Database Connection Errors
-
-**Cause:** Supabase URL incorrect or network blocked.
-
-**Fix:**
-1. Use **Pooler** connection string (port 6543)
-2. Verify password is correct (no typos)
-3. Check Supabase project is active
-
-### Gmail Tracking Not Working
-
-**Cause:** Wrong password or 2FA not enabled.
-
-**Fix:**
-1. Enable 2FA on Google Account
-2. Use **App Password**, not regular password
-3. Verify `GMAIL_USER` matches the email
-4. Check IMAP is enabled in Gmail settings
-
-### GitHub Actions Not Running
-
-**Cause:** Actions disabled or permissions wrong.
-
-**Fix:**
-1. Go to Repo Settings → Actions → Enable
-2. Check workflow file syntax
-3. Manually trigger to test
-
-### HF Space Shows "Error"
-
-**Cause:** Missing environment variables or build failed.
-
-**Fix:**
-1. Check all 7 secrets are added
-2. Review build logs for errors
-3. Restart the Space (Settings → Factory reboot)
-
----
-
-## 📚 Additional Resources
-
-- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [Supabase Python Client](https://supabase.com/docs/reference/python)
-- [Gmail IMAP Guide](https://support.google.com/mail/answer/7126229)
-- [GitHub Actions Cron Syntax](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#schedule)
-- [Hugging Face Spaces Docker](https://huggingface.co/docs/hub/spaces-sdks-docker)
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
-
----
-
-## 📄 License
-
-MIT License - Free for personal and commercial use.
-
----
-
-## 🙏 Acknowledgments
-
-- Built for job seekers tired of manual tracking
-- Inspired by the frustration of ghosting after interviews
-- Made possible by free tiers of amazing services
-
----
-
-**Built with ❤️ by S-amir** | [GitHub](https://github.com/S-am-ir/Anti-Berojgar) | [Live Demo](https://huggingface.co/spaces/S-a-mir/anti-berojgar)
+ [Live Demo](https://huggingface.co/spaces/S-a-mir/anti-berojgar)
